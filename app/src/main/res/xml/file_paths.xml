@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Where TakePicture() writes the freshly-captured task-completion photo before it's
+         read back, compressed, and uploaded — see StaffTasksModule/TaskCompletionDetailSheet. -->
+    <cache-path name="task_photo_captures" path="task_photo_captures/" />
+    <!-- Generated .ics files shared via Intent.ACTION_SEND when calendar write access is denied. -->
+    <cache-path name="calendar_shares" path="calendar_shares/" />
+    <!-- Generated payslip PDFs shared via Intent.ACTION_SEND — see PayslipPdfRenderer. -->
+    <cache-path name="payslip_shares" path="payslip_shares/" />
+</paths>
