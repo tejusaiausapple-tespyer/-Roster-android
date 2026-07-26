@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "641001375488",
+    "firebase_url": "https://roster-8a270-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "roster-8a270",
+    "storage_bucket": "roster-8a270.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:641001375488:android:1792fe080a5ccf99c155e5",
+        "android_client_info": {
+          "package_name": "com.surainvestments.roster"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "641001375488-a2ligi7p0q12rsfr1tmsp0igmhgp7kte.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCgELuStdVjIWbekcQ2oM2373GYB626kKk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "641001375488-a2ligi7p0q12rsfr1tmsp0igmhgp7kte.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

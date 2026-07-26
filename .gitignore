@@ -11,7 +11,9 @@ local.properties
 app/build/
 app/release/
 app/debug/
-google-services.json
+# google-services.json is committed deliberately — it's Firebase client
+# config, not a secret (Google ships it inside every compiled APK), and CI
+# needs it present to run processDebugGoogleServices/lint/assemble.
 *.jks
 *.keystore
 keystore.properties
