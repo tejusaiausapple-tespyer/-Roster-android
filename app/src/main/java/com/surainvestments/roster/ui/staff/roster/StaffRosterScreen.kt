@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +72,8 @@ private data class SheetTarget(val shift: Shift, val timesheet: Timesheet?)
 fun StaffRosterScreen(
     viewModel: StaffRosterViewModel = hiltViewModel(),
     modifier: Modifier = Modifier,
+    pendingSubmitShiftId: String? = null,
+    onPendingSubmitConsumed: () -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsState()
     val navBarPadding = LocalNavBarPadding.current
@@ -81,6 +84,15 @@ fun StaffRosterScreen(
     var undoTarget by remember { mutableStateOf<Timesheet?>(null) }
     var showHistory by remember { mutableStateOf(false) }
     val addToCalendar = rememberAddToCalendarAction()
+
+    // A "timesheet-rejected" push (or the local forgot-end/submit-hours reminder) deep-links
+    // straight to Submit Hours for that shift, per the plan's deep-link routing table.
+    LaunchedEffect(pendingSubmitShiftId) {
+        pendingSubmitShiftId?.let { id ->
+            viewModel.findShift(id)?.let { (shift, timesheet) -> submitTarget = SheetTarget(shift, timesheet) }
+            onPendingSubmitConsumed()
+        }
+    }
 
     submitTarget?.let { target ->
         SubmitHoursSheet(

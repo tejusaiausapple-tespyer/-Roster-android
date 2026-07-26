@@ -14,6 +14,15 @@ enum class PayslipStatus(val rawValue: String) {
     /** Staff may see a payslip only in these two terminal states — rules-enforced, not just this check. */
     val isStaffVisible: Boolean get() = this == Submitted || this == Archived
 
+    /** Mirrors iOS `PayslipStatus.label` — used on the PDF/detail view's status line. */
+    val label: String get() = when (this) {
+        Draft -> "Draft"
+        UnderReview -> "Under Review"
+        Approved -> "Approved"
+        Submitted -> "Submitted"
+        Archived -> "Archived"
+    }
+
     companion object {
         fun fromRaw(value: String?): PayslipStatus = entries.firstOrNull { it.rawValue == value } ?: Draft
     }

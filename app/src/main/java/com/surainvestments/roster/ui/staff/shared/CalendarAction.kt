@@ -42,8 +42,11 @@ class CalendarActionViewModel @Inject constructor(
 }
 
 /**
- * Returns an `(Shift) -> Unit` action for an "Add to Calendar" tap — requests
- * `WRITE_CALENDAR` first if not yet granted, then proceeds regardless of the outcome (the
+ * Returns an `(Shift) -> Unit` action for an "Add to Calendar" tap — requests **both**
+ * `WRITE_CALENDAR` and `READ_CALENDAR` if not yet granted (the service's `defaultCalendarId`
+ * lookup queries the Calendars table, which needs the read permission too — requesting only
+ * write left that query throwing and silently falling back to the ICS-share/error path even
+ * when the user had just granted calendar access), then proceeds regardless of the outcome (the
  * service falls back to an `.ics` share when access is still denied). Shared by Home and
  * Roster's shift cards so both wire the exact same permission/fallback flow.
  */
@@ -70,7 +73,7 @@ fun rememberAddToCalendarAction(viewModel: CalendarActionViewModel = hiltViewMod
         }
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         pendingShift?.let(::runAdd)
         pendingShift = null
     }
@@ -80,7 +83,7 @@ fun rememberAddToCalendarAction(viewModel: CalendarActionViewModel = hiltViewMod
             runAdd(shift)
         } else {
             pendingShift = shift
-            permissionLauncher.launch(Manifest.permission.WRITE_CALENDAR)
+            permissionLauncher.launch(arrayOf(Manifest.permission.WRITE_CALENDAR, Manifest.permission.READ_CALENDAR))
         }
     }
 }

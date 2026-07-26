@@ -75,8 +75,8 @@ data class RosterUiState(
  */
 @HiltViewModel
 class StaffRosterViewModel @Inject constructor(
-    authRepository: AuthRepository,
-    shiftRepository: ShiftRepository,
+    private val authRepository: AuthRepository,
+    private val shiftRepository: ShiftRepository,
     private val timesheetRepository: TimesheetRepository,
 ) : ViewModel() {
 
@@ -120,6 +120,13 @@ class StaffRosterViewModel @Inject constructor(
 
     fun onSelectDay(dateKey: String) {
         selectedDayKeyFlow.value = dateKey
+    }
+
+    /** Looks up a shift (+ its timesheet, if any) already held in the shared cached window — for opening Submit Hours from a notification deep link. */
+    fun findShift(shiftId: String): Pair<Shift, Timesheet?>? {
+        val uid = authRepository.currentUid() ?: return null
+        val shift = shiftRepository.staffShiftsById(uid).value[shiftId] ?: return null
+        return shift to timesheetRepository.staffTimesheetsByShiftId(uid).value[shiftId]
     }
 
     /** Deletes a self-reported absence so the staff member can submit hours instead. */

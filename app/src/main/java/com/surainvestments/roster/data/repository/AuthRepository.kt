@@ -4,14 +4,17 @@ import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FirebaseFirestore
+import com.surainvestments.roster.data.di.ApplicationScope
 import com.surainvestments.roster.data.remote.EmptyRequestBody
 import com.surainvestments.roster.data.remote.WorkerApiService
 import com.surainvestments.roster.domain.model.AppUser
 import com.surainvestments.roster.domain.model.AuthError
 import com.surainvestments.roster.domain.model.UserStatus
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,6 +30,8 @@ class AuthRepository @Inject constructor(
     private val firebaseAuth: FirebaseAuth,
     private val firestore: FirebaseFirestore,
     private val workerApi: WorkerApiService,
+    private val notificationTokenRepository: NotificationTokenRepository,
+    @ApplicationScope private val appScope: CoroutineScope,
 ) {
 
     /** The signed-in uid right now, or null — for one-off writes that don't need a live flow. */
@@ -83,6 +88,16 @@ class AuthRepository @Inject constructor(
             firebaseAuth.signOut()
             throw AuthError.AccountInactive
         }
+
+        // Best-effort, deliberately launched on the app-wide scope rather
+        // than awaited — claims this device as the account's single active
+        // notification device without adding a network round trip to the
+        // login flow (a plain `coroutineScope { launch {} }` here would
+        // still suspend signIn() until the child completes, defeating the
+        // point). Distinct from PushTokenRegistrar's reactive registration
+        // (also runs on a restored session, not just a genuine login): only
+        // this path should claim active status.
+        appScope.launch { runCatching { notificationTokenRepository.claimActiveDeviceOnLogin(uid) } }
     }
 
     fun signOut() {

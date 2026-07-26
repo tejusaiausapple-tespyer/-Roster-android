@@ -114,6 +114,31 @@ data class SendNotificationResponse(
     val sent: Int? = null,
 )
 
+/**
+ * `reason`: "login" claims this device as the account's single active
+ * notification device (every other token doc for this uid is deactivated
+ * server-side). "refresh" carries active status forward across a silent FCM
+ * token rotation, and only does anything if `previousToken`'s doc was
+ * already active — see worker/handlers/deviceActivation.ts.
+ */
+@Serializable
+data class ActivateDeviceRequest(
+    val token: String,
+    val previousToken: String? = null,
+    val reason: String,
+)
+
+/** Best-effort, same philosophy as SendNotificationResponse: worker/index.ts
+ *  always returns HTTP 200 here even on internal failure (ok: false, error). */
+@Serializable
+data class ActivateDeviceResponse(
+    val ok: Boolean? = null,
+    val active: Boolean? = null,
+    val error: String? = null,
+    val skipped: Boolean? = null,
+    val reason: String? = null,
+)
+
 // ─── Account deletion (worker/handlers/accountDeletion.ts) ────────────────────
 
 @Serializable

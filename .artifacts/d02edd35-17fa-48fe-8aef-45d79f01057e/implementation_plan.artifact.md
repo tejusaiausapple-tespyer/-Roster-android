@@ -1,11 +1,12 @@
-# Improve HhmmPickerDialog UI
+# Migrate HhmmPickerDialog to Material 3 TimePicker (Dial)
 
-The goal is to enhance the visual design of the custom time picker (`HhmmPickerDialog`) to make it look more modern and less "basic". This will be achieved by adding clearer selection indicators, improving typography contrast, and refining the layout.
+The goal is to replace the custom wheel-based time picker with the standard Material 3 `TimePicker` (dial-style) as requested.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> The plan involves changing the font sizes and weights for the selected time. I'm choosing `headlineMedium` for the selected item and `titleMedium` for unselected items. If this feels too large, we can scale it back to `titleLarge` for the selected item.
+> The Material 3 `TimePicker` takes up more space than the compact wheel picker. I will wrap it in an `AlertDialog` to maintain consistency with the current usage.
+> I will use `is24Hour = false` by default (AM/PM) as the previous picker was AM/PM based, but the internal storage will remain "HH:mm" (24h).
 
 ## Proposed Changes
 
@@ -13,27 +14,21 @@ The goal is to enhance the visual design of the custom time picker (`HhmmPickerD
 
 #### [MODIFY] [HhmmPickerDialog.kt](file:///Users/sura/Desktop/Roster/Roster Android Native App/app/src/main/java/com/surainvestments/roster/ui/components/HhmmPickerDialog.kt)
 
-- **Selection Indicator**:
-    - Update the selection band background to use `primaryContainer` with a slightly higher alpha (0.12f).
-    - Add horizontal dividers (0.5dp height) at the top and bottom of the selection band using `outlineVariant`.
-- **Layout Improvements**:
-    - Add a colon ":" separator between the Hour and Minute wheels.
-    - Increase horizontal spacing between wheels for better legibility.
-- **Wheel Item Styling**:
-    - Modify the `Wheel` composable to emphasize the selected item.
-    - Selected item: Use `headlineMedium` typography, `FontWeight.Bold`, and `MaterialTheme.colorScheme.primary` color.
-    - Unselected items: Use `titleMedium` typography and `MaterialTheme.colorScheme.onSurfaceVariant` (faded).
-- **Smooth Transitions**:
-    - Refine the `graphicsLayer` logic to provide a smoother scaling and alpha transition as items move into and out of the center.
+- **State Management**:
+    - Use `rememberTimePickerState` instead of individual index states.
+    - Parse the `initial` string ("HH:mm") to seed the state.
+- **UI Replacement**:
+    - Replace the `Box` containing `Wheel` components with the `TimePicker` composable.
+    - Remove the custom `Wheel`, `centeredItemIndex`, and `WheelEdgeFade` composables as they are no longer needed.
+- **Experimental Annotations**:
+    - Add `@OptIn(ExperimentalMaterial3Api::class)` as `TimePicker` and `rememberTimePickerState` are experimental.
+- **Confirmation Logic**:
+    - Extract `hour` and `minute` from `TimePickerState` and format them back to "HH:mm" using the existing `hhmmFormatter`.
 
 ## Verification Plan
 
 ### Manual Verification
-- Deploy the app to a device/emulator.
-- Open the Availability screen and edit a day's hours to trigger the `HhmmPickerDialog`.
-- Verify the new styling:
-    - Clearer selection band with dividers.
-    - Pronounced selected item (bold, colored, larger).
-    - Smooth scrolling and snapping behavior.
-    - Proper spacing between hour, minute, and period wheels.
-- Check both Light and Dark modes for color consistency.
+- Deploy the app and trigger the time picker from the Availability or Submit Hours screens.
+- Verify the Dial layout appears correctly.
+- Confirm that selecting a time and clicking "OK" correctly updates the parent screen with the formatted "HH:mm" string.
+- Test both AM and PM transitions.

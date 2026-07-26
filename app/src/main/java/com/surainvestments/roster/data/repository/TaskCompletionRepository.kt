@@ -1,6 +1,7 @@
 package com.surainvestments.roster.data.repository
 
 import android.graphics.Bitmap
+import android.util.Log
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
@@ -43,7 +44,13 @@ class TaskCompletionRepository @Inject constructor(
     fun completionsForDate(dateKey: String): Flow<List<TaskCompletion>> = callbackFlow {
         val registration = firestore.collection("task_completions")
             .whereEqualTo("date", dateKey)
-            .addSnapshotListener { snapshot, _ ->
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    // A dropped listener (e.g. permission-denied) never fires again — silently
+                    // sending emptyList() here would freeze the manager dashboard's task log at
+                    // "nothing completed" forever, even once new completions come in.
+                    Log.w("TaskCompletionRepository", "completionsForDate($dateKey) listener failed", error)
+                }
                 val completions = snapshot?.documents?.mapNotNull { doc ->
                     doc.data?.let { TaskCompletion.fromDocument(doc.id, it) }
                 } ?: emptyList()
@@ -67,7 +74,10 @@ class TaskCompletionRepository @Inject constructor(
         }
         val registration = firestore.collection("task_completions")
             .whereIn("date", dateKeys)
-            .addSnapshotListener { snapshot, _ ->
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.w("TaskCompletionRepository", "completionsForDates($dateKeys) listener failed", error)
+                }
                 val completions = snapshot?.documents?.mapNotNull { doc ->
                     doc.data?.let { TaskCompletion.fromDocument(doc.id, it) }
                 } ?: emptyList()
@@ -101,14 +111,23 @@ class TaskCompletionRepository @Inject constructor(
                 .setCustomMetadata("date", dateKey)
                 .build()
             ref.putBytes(bytes, metadata).await()
-            urls += ref.downloadUrl.await().toString()
+            // gs:// reference, not the resolved https download URL — matches iOS's
+            // StorageReference.description and the PWA's expected format exactly.
+            urls += ref.toString()
             taskPhotoCache.save(bitmap, task.id, dateKey, index)
         }
 
+        val docId = "${task.id}_$dateKey"
         val data = mutableMapOf<String, Any>(
+            // iOS's TaskCompletion is plain Codable (no @DocumentID) — its decoder requires
+            // "id" as a literal field in the document body, not just the document's own id.
+            // Without this, every Android-written completion silently fails to decode on iOS
+            // (and any other plain-Codable consumer) and vanishes with no error anywhere.
+            "id" to docId,
             "taskId" to task.id,
             "date" to dateKey,
             "completed" to true,
+            "status" to "completed",
             "completedAt" to FieldValue.serverTimestamp(),
             "completedBy" to staffId,
         )
@@ -118,6 +137,6 @@ class TaskCompletionRepository @Inject constructor(
         }
         note?.trim()?.takeIf { it.isNotEmpty() }?.let { data["note"] = it }
 
-        firestore.collection("task_completions").document("${task.id}_$dateKey").set(data).await()
+        firestore.collection("task_completions").document(docId).set(data).await()
     }
 }

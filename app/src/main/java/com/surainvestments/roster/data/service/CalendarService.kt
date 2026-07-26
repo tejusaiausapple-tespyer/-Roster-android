@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.CalendarContract
+import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.surainvestments.roster.domain.model.RosterCalendar
@@ -36,8 +37,15 @@ sealed interface CalendarResult {
 @Singleton
 class CalendarService @Inject constructor(@ApplicationContext private val context: Context) {
 
+    /**
+     * Both permissions, not just WRITE_CALENDAR: [defaultCalendarId] queries the Calendars table,
+     * which requires READ_CALENDAR — without it that query throws a `SecurityException` that the
+     * outer catch swallows into the exact same "Could not save the event" message an actual
+     * insert failure would produce, making the real cause invisible from the UI alone.
+     */
     fun hasPermission(): Boolean =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED
+        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) == PackageManager.PERMISSION_GRANTED
 
     suspend fun addShift(shift: Shift, companyName: String): CalendarResult = withContext(Dispatchers.IO) {
         if (!hasPermission()) {
@@ -66,6 +74,7 @@ class CalendarService @Inject constructor(@ApplicationContext private val contex
             context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminder)
             CalendarResult.Added
         } catch (e: Exception) {
+            Log.w("CalendarService", "addShift failed", e)
             CalendarResult.Failed("Could not save the event.")
         }
     }

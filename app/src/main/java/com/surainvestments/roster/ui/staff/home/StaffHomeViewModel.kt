@@ -3,10 +3,13 @@ package com.surainvestments.roster.ui.staff.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.surainvestments.roster.data.repository.AuthRepository
+import com.surainvestments.roster.data.repository.DailyJobRepository
 import com.surainvestments.roster.data.repository.ShiftRepository
 import com.surainvestments.roster.data.repository.TimesheetRepository
 import com.surainvestments.roster.domain.model.AppUser
 import com.surainvestments.roster.domain.model.BusinessRules
+import com.surainvestments.roster.domain.model.DailyJobAssignment
+import com.surainvestments.roster.domain.model.excludingOrphaned
 import com.surainvestments.roster.domain.model.HoursMetrics
 import com.surainvestments.roster.domain.model.RosterCalendar
 import com.surainvestments.roster.domain.model.RosterFormat
@@ -37,6 +40,8 @@ data class HomeUiState(
     val todaysShifts: List<ShiftRowUi> = emptyList(),
     val upcomingShifts: List<UpcomingShiftUi> = emptyList(),
     val metrics: HoursMetrics = HoursMetrics(),
+    /** Pending (incomplete) Daily Jobs count for the bell badge — no Messages, see docs/ANDROID-STAFF-BUILD-PLAN.md Phase G. */
+    val pendingJobsCount: Int = 0,
 )
 
 /** Android analogue of iOS's staff `HomeView` — today's shift + a short look-ahead. */
@@ -45,6 +50,7 @@ class StaffHomeViewModel @Inject constructor(
     authRepository: AuthRepository,
     shiftRepository: ShiftRepository,
     timesheetRepository: TimesheetRepository,
+    dailyJobRepository: DailyJobRepository,
 ) : ViewModel() {
 
     private val todayKey = RosterCalendar.todayKey()
@@ -55,19 +61,28 @@ class StaffHomeViewModel @Inject constructor(
             if (staffId == null) {
                 flowOf(HomeUiState(isLoading = false))
             } else {
-                // Shared, cached flows — same underlying listeners StaffRosterViewModel reads.
+                // Shared, cached flows — same underlying listeners StaffRosterViewModel/DailyJobsViewModel read.
                 combine(
                     authRepository.userProfileFlow(staffId),
                     shiftRepository.staffShiftsWindow(staffId),
                     timesheetRepository.staffTimesheetsByShiftId(staffId),
-                ) { user, shifts, timesheetsByShiftId -> buildUiState(user, shifts, timesheetsByShiftId) }
+                    dailyJobRepository.todaysAssignments(staffId, todayKey),
+                ) { user, shifts, timesheetsByShiftId, dailyJobs -> buildUiState(user, shifts, timesheetsByShiftId, dailyJobs) }
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
-    private fun buildUiState(user: AppUser?, shifts: List<Shift>, timesheetsByShiftId: Map<String, Timesheet>): HomeUiState {
+    private fun buildUiState(
+        user: AppUser?,
+        shifts: List<Shift>,
+        timesheetsByShiftId: Map<String, Timesheet>,
+        dailyJobs: List<DailyJobAssignment>,
+    ): HomeUiState {
         val now = Instant.now()
         val sorted = shifts.sortedWith(compareBy({ it.date }, { it.rosteredStart }))
+        // A deleted-then-recreated shift leaves its old Daily Job assignment behind with no
+        // cascade-delete tying the two together — drop anything no longer pointing at a real shift.
+        val liveDailyJobs = dailyJobs.excludingOrphaned(validShiftIds = shifts.map { it.id }.toSet())
 
         fun toRow(shift: Shift): ShiftRowUi {
             val timesheet = timesheetsByShiftId[shift.id]
@@ -106,6 +121,7 @@ class StaffHomeViewModel @Inject constructor(
             todaysShifts = todaysShifts,
             upcomingShifts = upcomingShifts,
             metrics = HoursMetrics.compute(timesheetsByShiftId.values.toList(), shifts, now),
+            pendingJobsCount = liveDailyJobs.count { !it.completed },
         )
     }
 }

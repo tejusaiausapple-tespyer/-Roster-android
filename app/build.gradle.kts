@@ -1,3 +1,5 @@
+import com.google.firebase.appdistribution.gradle.firebaseAppDistribution
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -9,6 +11,15 @@ plugins {
     alias(libs.plugins.hilt)
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics.plugin)
+    alias(libs.plugins.firebase.appdistribution.plugin)
+}
+
+// Release signing lives outside git in keystore.properties (see .gitignore) — back up
+// keystore/rosterra-release.jks and this file somewhere durable. Losing either means
+// staff can never receive an in-place update again; Android requires a matching signature.
+val keystoreProperties = Properties().apply {
+    val propsFile = rootProject.file("keystore.properties")
+    if (propsFile.exists()) propsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -25,11 +36,30 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.containsKey("storeFile")) {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             buildConfigField("String", "WORKER_BASE_URL", "\"https://sura-roster.com/\"")
+            firebaseAppDistribution {
+                artifactType = "APK"
+                releaseNotes = "Staff app build for internal testing."
+                // Fill in before running appDistributionUploadRelease:
+                // testers = "staff1@example.com, staff2@example.com"
+                // groups = "staff-testers"
+            }
         }
         debug {
             isMinifyEnabled = false
@@ -87,6 +117,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.play.services.location)
     implementation(libs.coil.compose)
+    implementation(libs.androidx.work.runtime.ktx)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

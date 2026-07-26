@@ -42,6 +42,9 @@ interface WorkerApiService {
     @POST("api/send-notification")
     suspend fun sendNotification(@Body body: SendNotificationRequest): Response<SendNotificationResponse>
 
+    @POST("api/notifications/activate-device")
+    suspend fun activateDevice(@Body body: ActivateDeviceRequest): Response<ActivateDeviceResponse>
+
     @POST("api/account-deletion/request")
     suspend fun requestAccountDeletion(@Body body: AccountDeletionRequestBody): Response<AccountDeletionRequestResponse>
 

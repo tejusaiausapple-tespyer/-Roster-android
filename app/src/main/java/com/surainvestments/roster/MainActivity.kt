@@ -1,5 +1,6 @@
 package com.surainvestments.roster
 
+import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
@@ -30,9 +31,13 @@ class MainActivity : FragmentActivity() {
 
     @Inject lateinit var appearancePreferences: AppearancePreferences
 
+    /** Deep link from a tapped notification (e.g. "home", "submit:{shiftId}") — consumed once the nav routes to it. */
+    private val pendingDeepLink = mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        pendingDeepLink.value = intent?.getStringExtra(EXTRA_DEEP_LINK)
 
         setContent {
             var appearanceMode by remember { mutableStateOf(appearancePreferences.getMode()) }
@@ -79,9 +84,22 @@ class MainActivity : FragmentActivity() {
                             appearancePreferences.setMode(mode)
                             appearanceMode = mode
                         },
+                        pendingDeepLink = pendingDeepLink.value,
+                        onDeepLinkConsumed = { pendingDeepLink.value = null },
                     )
                 }
             }
         }
+    }
+
+    /** A notification tapped while the app is already running re-delivers here rather than through onCreate. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.getStringExtra(EXTRA_DEEP_LINK)?.let { pendingDeepLink.value = it }
+    }
+
+    companion object {
+        const val EXTRA_DEEP_LINK = "deepLink"
     }
 }

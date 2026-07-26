@@ -28,4 +28,22 @@ enum class StaffTab(
     Tasks("staff/tasks", "Tasks", Icons.AutoMirrored.Filled.Assignment, Icons.AutoMirrored.Outlined.Assignment),
     Availability("staff/availability", "Availability", Icons.Filled.EditCalendar, Icons.Outlined.EditCalendar),
     Account("staff/account", "Account", Icons.Filled.AccountCircle, Icons.Outlined.AccountCircle),
+    ;
+
+    companion object {
+        /**
+         * Maps a notification deep link to its destination tab, mirroring iOS
+         * `AppRouter.handleNotificationUserInfo`'s event→tab routing (`ANDROID-STAFF-BUILD-PLAN.md` §5).
+         * `submit:{shiftId}` lands on Roster, where Submit Hours lives. Unrecognized links return null.
+         */
+        fun fromDeepLink(deepLink: String): StaffTab? = when {
+            deepLink == "home" -> Home
+            deepLink.startsWith("submit:") -> Roster
+            deepLink.contains("roster") || deepLink.contains("history") -> Roster
+            deepLink.contains("task") || deepLink.contains("job") -> Tasks
+            deepLink.contains("availability") -> Availability
+            deepLink.contains("account") -> Account
+            else -> null
+        }
+    }
 }

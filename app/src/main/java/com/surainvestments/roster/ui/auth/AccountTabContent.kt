@@ -49,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -65,8 +66,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.google.firebase.auth.FirebaseAuth
 import com.surainvestments.roster.BuildConfig
 import com.surainvestments.roster.data.local.AppearanceMode
@@ -130,6 +135,22 @@ fun AccountTabContent(
     var showPayslips by remember { mutableStateOf(false) }
     var emailVerified by remember { mutableStateOf(false) }
     var comingSoonTitle by remember { mutableStateOf<String?>(null) }
+
+    // NotificationManagerCompat.areNotificationsEnabled() reflects the real, user-visible state
+    // across every API level (the POST_NOTIFICATIONS runtime permission on 33+, and the
+    // system-settings toggle below that) — re-checked on resume so flipping it in "System
+    // notification settings" and coming back updates this row immediately.
+    var notificationsEnabled by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     LaunchedEffect(Unit) {
         emailVerified = FirebaseAuth.getInstance().currentUser?.isEmailVerified == true
@@ -291,8 +312,8 @@ fun AccountTabContent(
                 SettingsRow(
                     title = if (isManager) "Push notifications" else "Alerts allowed",
                     icon = Icons.Outlined.Notifications,
-                    value = "Off",
-                    valueColor = TextTertiaryLight,
+                    value = if (notificationsEnabled) "On" else "Off",
+                    valueColor = if (notificationsEnabled) AccentEmeraldLight else TextTertiaryLight,
                 )
                 SettingsDivider()
                 SettingsRow(

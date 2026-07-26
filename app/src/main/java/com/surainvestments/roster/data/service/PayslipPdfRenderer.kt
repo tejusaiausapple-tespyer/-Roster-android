@@ -1,38 +1,59 @@
 package com.surainvestments.roster.data.service
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
+import android.text.Layout
+import android.text.StaticLayout
+import android.text.TextPaint
+import com.surainvestments.roster.R
 import com.surainvestments.roster.domain.model.AppSettings
+import com.surainvestments.roster.domain.model.EmploymentType
 import com.surainvestments.roster.domain.model.Payslip
 import com.surainvestments.roster.domain.model.PayrollCalculator
 import com.surainvestments.roster.domain.model.RosterFormat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.FileOutputStream
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// A4 in points at 72dpi.
+// A4 at 72dpi (iOS uses 595.2 x 841.8 — PdfDocument.PageInfo takes integer pixels, negligible rounding).
 private const val PAGE_WIDTH = 595
 private const val PAGE_HEIGHT = 842
-private const val MARGIN = 42f
+private const val MARGIN = 52f
+private const val ROW_HEIGHT = 22f
+private const val SECTION_GAP = 30f
 
 /**
- * Renders a [Payslip] as a single-page, monochrome, ink-on-white A4 PDF — mirrors iOS
- * `PayslipPDFService`'s layout (company block, employee/period columns, earnings table, tax &
- * deductions, superannuation, bordered net-pay panel, Fair Work Act footer) so an export looks
- * the same regardless of which platform a staff member is on. Used only when exporting/sharing —
- * the in-app detail screen is a native, theme-aware Compose view, not a rendering of this file.
+ * Renders a [Payslip] as a single-page A4 PDF — a **byte-for-byte port of iOS
+ * `PayslipPDFService.swift`**, not an independent redesign, since the in-app detail view now
+ * displays this exact rendering (see `PayslipDetailScreen`) rather than a separately hand-built
+ * Compose layout that could silently drift from it, which is what prompted this rewrite.
+ *
+ * Design (iOS's own words): "monochrome ink on white — no colour fills or tinted text... the
+ * company logo is the single colour element on the page." Hierarchy comes from weight, size,
+ * letter-spaced section labels, hairlines and whitespace only.
  */
 @Singleton
 class PayslipPdfRenderer @Inject constructor(@ApplicationContext private val context: Context) {
+
+    // Exact iOS Theme values (Services/PayslipPDFService.swift) — 0–1 float RGB converted to 0–255 int.
+    private val ink = Color.rgb(26, 28, 38) // (0.10, 0.11, 0.15)
+    private val secondary = Color.rgb(115, 120, 133) // (0.45, 0.47, 0.52)
+    private val rule = Color.rgb(217, 219, 224) // (0.85, 0.86, 0.88)
+    private val panelFill = Color.rgb(249, 249, 250) // (0.975, 0.975, 0.98)
 
     suspend fun render(payslip: Payslip, settings: AppSettings): File = withContext(Dispatchers.IO) {
         val document = PdfDocument()
@@ -49,168 +70,212 @@ class PayslipPdfRenderer @Inject constructor(@ApplicationContext private val con
 
     private fun draw(canvas: Canvas, slip: Payslip, settings: AppSettings) {
         val totals = PayrollCalculator.totals(slip)
-        val rightX = PAGE_WIDTH - MARGIN
-        val colHoursX = rightX - 200f
-        val colRateX = rightX - 105f
+        val pageWidth = PAGE_WIDTH.toFloat()
+        val pageHeight = PAGE_HEIGHT.toFloat()
+        val contentWidth = pageWidth - MARGIN * 2
+        var y = MARGIN
 
-        val sectionLabel = textPaint(size = 8.5f, bold = true, color = Color.rgb(90, 90, 90), letterSpacing = 0.12f)
-        val body = textPaint(size = 10.5f)
-        val bodyMuted = textPaint(size = 9.5f, color = Color.DKGRAY)
-        val bodyBold = textPaint(size = 10.5f, bold = true)
-        val companyName = textPaint(size = 17f, bold = true, letterSpacing = 0.02f)
-        val payslipTitle = textPaint(size = 12.5f, bold = true, letterSpacing = 0.08f)
-        val hairline = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 0.75f; color = Color.rgb(200, 200, 200) }
-        val netPayLabel = textPaint(size = 12f, bold = true)
-        val netPayValue = textPaint(size = 15f, bold = true)
-        val footer = textPaint(size = 7.5f, color = Color.GRAY)
-
-        var y = MARGIN + 14f
-
-        // Company header.
-        canvas.drawText(settings.companyName.uppercase(), MARGIN, y, companyName)
-        y += 18f
-        listOfNotNull(
-            settings.businessAddress.takeIf { it.isNotBlank() },
-            listOfNotNull(
-                settings.abn.takeIf { it.isNotBlank() }?.let { "ABN $it" },
-                settings.acn.takeIf { it.isNotBlank() }?.let { "ACN $it" },
-            ).joinToString("   ").takeIf { it.isNotBlank() },
-        ).forEach { line ->
-            canvas.drawText(line, MARGIN, y, bodyMuted)
-            y += 13f
+        // ── Header: logo + company block left, PAYSLIP + status right.
+        drawLogo(canvas, x = MARGIN, y = y)
+        drawText(canvas, settings.companyName, x = MARGIN + 52, y = y + 1, width = 260f, size = 16f, bold = true, color = ink)
+        var companyLineY = y + 22
+        val addressLine = settings.businessAddress.ifBlank {
+            listOf(settings.businessStreet, settings.businessSuburb, settings.businessState).filter { it.isNotBlank() }.joinToString(", ")
         }
-        y += 8f
-        canvas.drawLine(MARGIN, y, rightX, y, hairline)
-        y += 24f
+        if (addressLine.isNotBlank()) {
+            companyLineY += drawText(canvas, addressLine, x = MARGIN + 52, y = companyLineY, width = 260f, size = 9f, color = secondary)
+        }
+        if (settings.abn.isNotBlank()) {
+            drawText(canvas, "ABN ${settings.abn}", x = MARGIN + 52, y = companyLineY, width = 260f, size = 9f, color = secondary)
+        }
+        drawText(canvas, "PAYSLIP", x = pageWidth - MARGIN - 160, y = y + 1, width = 160f, size = 19f, bold = true, color = ink, align = Layout.Alignment.ALIGN_OPPOSITE, letterSpacingEm = 2.5f / 19f)
+        drawText(canvas, slip.status.label.uppercase(Locale.ENGLISH), x = pageWidth - MARGIN - 160, y = y + 28, width = 160f, size = 8f, bold = true, color = secondary, align = Layout.Alignment.ALIGN_OPPOSITE, letterSpacingEm = 1.5f / 8f)
+        y += 58
+        hairline(canvas, y, pageWidth)
+        y += 22
 
-        // Title row: "PAYSLIP" + period range, right-aligned.
-        canvas.drawText("PAYSLIP", MARGIN, y, payslipTitle)
-        canvas.drawText(
-            "${RosterFormat.dateShort(slip.periodStart)} – ${RosterFormat.dateShort(slip.periodEnd)}",
-            rightX,
-            y,
-            rightAligned(body),
+        // ── Employee + period two-column block.
+        val leftPairs = listOf(
+            "Employee" to slip.staffName,
+            "Employee ID" to slip.employeeId.ifBlank { "—" },
+            "Position" to slip.position.ifBlank { "—" },
+            "Employment type" to (EmploymentType.fromRaw(slip.employmentType)?.label ?: "—"),
         )
-        y += 26f
-
-        // Employee / period two-column block.
-        val colStart = y
-        val col2X = MARGIN + (rightX - MARGIN) / 2f
-        val leftEnd = drawFieldColumn(
-            canvas, MARGIN, colStart, sectionLabel, body,
-            "EMPLOYEE" to slip.staffName.ifBlank { "—" },
-            "EMPLOYEE ID" to slip.employeeId.ifBlank { "—" },
-            "POSITION" to slip.position.ifBlank { "—" },
-            "CLASSIFICATION" to slip.classification.ifBlank { slip.awardName.ifBlank { "—" } },
+        val rightPairs = listOf(
+            "Pay period" to "${RosterFormat.dateShort(slip.periodStart)} – ${RosterFormat.dateShort(slip.periodEnd)}",
+            "Pay date" to RosterFormat.dateShort(slip.payDate),
+            "Award" to slip.awardName.ifBlank { "—" }.let { if (slip.awardName.isBlank()) it else awardLabel(slip) },
+            "Classification" to slip.classification.ifBlank { "—" },
         )
-        val rightEnd = drawFieldColumn(
-            canvas, col2X, colStart, sectionLabel, body,
-            "PAY DATE" to RosterFormat.dateShort(slip.payDate),
-            "TFN" to (slip.tfnLast4.takeIf { it.isNotBlank() }?.let { "*** *** $it" } ?: "—"),
-            "EMPLOYMENT TYPE" to slip.employmentType.replaceFirstChar { it.uppercase() }.ifBlank { "—" },
-        )
-        y = maxOf(leftEnd, rightEnd) + 8f
-        canvas.drawLine(MARGIN, y, rightX, y, hairline)
-        y += 22f
+        val colWidth = contentWidth / 2
+        var leftY = y
+        leftPairs.forEach { (label, value) -> leftY += drawPair(canvas, label, value, x = MARGIN, y = leftY, width = colWidth - 16) }
+        var rightY = y
+        rightPairs.forEach { (label, value) -> rightY += drawPair(canvas, label, value, x = MARGIN + colWidth + 8, y = rightY, width = colWidth - 8) }
+        y = maxOf(leftY, rightY) + SECTION_GAP - 12
 
-        // Earnings table.
-        canvas.drawText("EARNINGS", MARGIN, y, sectionLabel)
-        y += 8f
-        canvas.drawText("HOURS", colHoursX, y, rightAligned(sectionLabel))
-        canvas.drawText("RATE", colRateX, y, rightAligned(sectionLabel))
-        canvas.drawText("AMOUNT", rightX, y, rightAligned(sectionLabel))
-        y += 16f
+        // ── Earnings table.
+        y = sectionTitle(canvas, "EARNINGS", y, pageWidth)
+        y = tableHeader(canvas, y, pageWidth)
 
-        val rows = PayrollCalculator.earningsRows(slip)
-        if (rows.isEmpty()) {
-            canvas.drawText("No earnings recorded for this period.", MARGIN, y, bodyMuted)
-            y += 18f
-        } else {
-            rows.forEach { row ->
-                canvas.drawText(row.label, MARGIN, y, body)
-                canvas.drawText(String.format(Locale.ENGLISH, "%.2f", row.hours), colHoursX, y, rightAligned(body))
-                canvas.drawText(RosterFormat.money(row.rate), colRateX, y, rightAligned(body))
-                canvas.drawText(RosterFormat.money(row.amount), rightX, y, rightAligned(body))
-                y += 17f
+        val rows = PayrollCalculator.earningsRows(slip).map { row ->
+            listOf(row.label, String.format(Locale.ENGLISH, "%.2f", row.hours), RosterFormat.money(row.rate), RosterFormat.money(row.amount))
+        }.ifEmpty { listOf(listOf("No earnings recorded", "—", "—", RosterFormat.money(0.0))) }
+        rows.forEach { row -> y = tableRow(canvas, y, row, pageWidth) }
+        y = totalRow(canvas, y, "Gross earnings", totals.gross, pageWidth)
+        y += SECTION_GAP
+
+        // ── Tax & deductions.
+        y = sectionTitle(canvas, "TAX & DEDUCTIONS", y, pageWidth)
+        val deductionRows = buildList {
+            add(listOf("PAYG withholding", "", "", RosterFormat.money(totals.tax)))
+            if (slip.salarySacrifice > 0) add(listOf("Salary sacrifice", "", "", RosterFormat.money(slip.salarySacrifice)))
+            if (slip.otherDeductions > 0) {
+                val label = if (slip.deductionNotes.isBlank()) "Other deductions" else "Other — ${slip.deductionNotes}"
+                add(listOf(label, "", "", RosterFormat.money(slip.otherDeductions)))
             }
         }
-        y += 6f
-        canvas.drawLine(MARGIN, y, rightX, y, hairline)
-        y += 18f
-        canvas.drawText("GROSS PAY", MARGIN, y, bodyBold)
-        canvas.drawText(RosterFormat.money(totals.gross), rightX, y, rightAligned(bodyBold))
-        y += 28f
+        deductionRows.forEach { row -> y = tableRow(canvas, y, row, pageWidth) }
+        y = totalRow(canvas, y, "Total tax & deductions", totals.tax + totals.deductions, pageWidth)
+        y += SECTION_GAP
 
-        // Tax & deductions.
-        canvas.drawText("TAX & DEDUCTIONS", MARGIN, y, sectionLabel)
-        y += 18f
-        canvas.drawText("PAYG withholding", MARGIN, y, body)
-        canvas.drawText("-${RosterFormat.money(totals.tax)}", rightX, y, rightAligned(body))
-        y += 17f
-        if (slip.otherDeductions > 0) {
-            canvas.drawText("Other deductions", MARGIN, y, body)
-            canvas.drawText("-${RosterFormat.money(slip.otherDeductions)}", rightX, y, rightAligned(body))
-            y += 17f
-        }
-        if (slip.salarySacrifice > 0) {
-            canvas.drawText("Salary sacrifice", MARGIN, y, body)
-            canvas.drawText("-${RosterFormat.money(slip.salarySacrifice)}", rightX, y, rightAligned(body))
-            y += 17f
-        }
-        y += 10f
-
-        // Superannuation — omitted entirely when the staff member's super is disabled.
-        if (slip.superRate > 0) {
-            canvas.drawText("SUPERANNUATION", MARGIN, y, sectionLabel)
-            y += 18f
-            canvas.drawText("Super guarantee (${RosterFormat.decimalHours(slip.superRate)}%)", MARGIN, y, body)
-            canvas.drawText(RosterFormat.money(totals.superAmount), rightX, y, rightAligned(body))
-            y += 17f
-            canvas.drawText("Paid by your employer — not deducted from net pay", MARGIN, y, bodyMuted.apply { textSize = 8f })
-            y += 24f
+        // ── Superannuation — omitted entirely when disabled (e.g. under-18 staff not entitled to SG).
+        val hasSuper = slip.superRate > 0
+        if (hasSuper) {
+            y = sectionTitle(canvas, "SUPERANNUATION", y, pageWidth)
+            y = tableRow(canvas, y, listOf("Employer contribution (SG ${RosterFormat.decimalHours(slip.superRate)}%)", "", "", RosterFormat.money(totals.superAmount)), pageWidth)
+            y += SECTION_GAP
         }
 
-        // Net pay — bordered panel.
-        val panelHeight = 42f
-        canvas.drawRect(MARGIN, y, rightX, y + panelHeight, Paint(hairline).apply { style = Paint.Style.STROKE; strokeWidth = 1f; color = Color.BLACK })
-        canvas.drawText("NET PAY", MARGIN + 14f, y + panelHeight / 2f + 5f, netPayLabel)
-        canvas.drawText(RosterFormat.money(totals.net), rightX - 14f, y + panelHeight / 2f + 5f, rightAligned(netPayValue))
+        // ── Net pay: bordered panel, ink text — no colour fill beyond the near-white panel tint.
+        val panelRect = RectF(MARGIN, y, pageWidth - MARGIN, y + 46f)
+        canvas.drawRoundRect(panelRect, 8f, 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; color = panelFill })
+        canvas.drawRoundRect(panelRect, 8f, 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 0.8f; color = rule })
+        drawText(canvas, "NET PAY", x = MARGIN + 18, y = y + 17, width = 200f, size = 10f, bold = true, color = ink, letterSpacingEm = 1.5f / 10f)
+        drawText(canvas, RosterFormat.money(totals.net), x = pageWidth - MARGIN - 218, y = y + 13, width = 200f, size = 17f, bold = true, color = ink, align = Layout.Alignment.ALIGN_OPPOSITE)
+        y += 46 + 20
 
-        // Footer disclaimer, pinned near the bottom of the page.
-        canvas.drawText(
-            "Issued in accordance with the Fair Work Act 2009 (Cth) and the Fair Work Regulations 2009.",
-            MARGIN,
-            PAGE_HEIGHT - MARGIN,
-            footer,
-        )
+        // ── Notes.
+        if (slip.notes.isNotBlank()) {
+            y += drawText(canvas, "Notes: ${slip.notes}", x = MARGIN, y = y, width = contentWidth, size = 9f, color = secondary)
+            y += 28
+        }
+
+        // ── Footer, pinned to the bottom of the page (not part of the flowing layout above).
+        val footerY = pageHeight - MARGIN - 30
+        hairline(canvas, footerY - 10, pageWidth)
+        val footerText = if (hasSuper) {
+            "Superannuation is paid by the employer to the employee's nominated fund and is not included in net pay. This payslip is issued in accordance with the Fair Work Act 2009 record-keeping requirements."
+        } else {
+            "This payslip is issued in accordance with the Fair Work Act 2009 record-keeping requirements."
+        }
+        drawText(canvas, footerText, x = MARGIN, y = footerY, width = contentWidth, size = 7.5f, color = secondary)
+        val generatedAt = DateTimeFormatter.ofPattern("d MMM yyyy, h:mm a", Locale.ENGLISH).withZone(java.time.ZoneId.systemDefault()).format(java.time.Instant.now())
+        drawText(canvas, "Generated by ${settings.companyName} · $generatedAt", x = MARGIN, y = footerY + 21, width = contentWidth, size = 7.5f, color = secondary)
     }
 
-    /** Draws stacked "LABEL" / value pairs starting at [startY]; returns the y position after the last one. */
-    private fun drawFieldColumn(
+    private fun awardLabel(slip: Payslip): String =
+        if (slip.awardCode.isBlank()) slip.awardName else "${slip.awardName} (${slip.awardCode})"
+
+    // ── Drawing primitives — StaticLayout throughout so `y` uniformly means "top of the text
+    // block" (matching iOS's NSString draw(in:) semantics), with wrapping, alignment, and
+    // letter-spacing (converted from iOS's point-based kern to Android's em-based letterSpacing:
+    // em = kernPoints / fontSizePoints) all going through one path. Returns the height consumed.
+
+    private fun drawLogo(canvas: Canvas, x: Float, y: Float) {
+        val bitmap = runCatching { BitmapFactory.decodeResource(context.resources, R.drawable.app_logo) }.getOrNull() ?: return
+        val scaled = Bitmap.createScaledBitmap(bitmap, 40, 40, true)
+        canvas.save()
+        val clip = Path().apply { addRoundRect(RectF(x, y, x + 40f, y + 40f), 9f, 9f, Path.Direction.CW) }
+        canvas.clipPath(clip)
+        canvas.drawBitmap(scaled, x, y, null)
+        canvas.restore()
+    }
+
+    private fun drawText(
         canvas: Canvas,
+        text: String,
         x: Float,
-        startY: Float,
-        labelPaint: Paint,
-        valuePaint: Paint,
-        vararg fields: Pair<String, String>,
+        y: Float,
+        width: Float,
+        size: Float,
+        color: Int,
+        bold: Boolean = false,
+        align: Layout.Alignment = Layout.Alignment.ALIGN_NORMAL,
+        letterSpacingEm: Float = 0f,
     ): Float {
-        var y = startY
-        fields.forEach { (label, value) ->
-            canvas.drawText(label, x, y, labelPaint)
-            y += 12f
-            canvas.drawText(value, x, y, valuePaint)
-            y += 18f
-        }
-        return y
-    }
-
-    private fun textPaint(size: Float, bold: Boolean = false, color: Int = Color.BLACK, letterSpacing: Float = 0f): Paint =
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             textSize = size
             this.color = color
             typeface = if (bold) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
-            this.letterSpacing = letterSpacing
+            letterSpacing = letterSpacingEm
         }
+        val safeWidth = width.toInt().coerceAtLeast(1)
+        val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, safeWidth)
+            .setAlignment(align)
+            .setIncludePad(false)
+            .build()
+        canvas.save()
+        canvas.translate(x, y)
+        layout.draw(canvas)
+        canvas.restore()
+        return layout.height.toFloat()
+    }
 
-    private fun rightAligned(paint: Paint): Paint = Paint(paint).apply { textAlign = Paint.Align.RIGHT }
+    /** Label/value pair (label left-column, value right of it) — long values wrap, returning the taller of the two as the row height consumed, mirroring iOS `drawPair`. */
+    private fun drawPair(canvas: Canvas, label: String, value: String, x: Float, y: Float, width: Float): Float {
+        drawText(canvas, label, x = x, y = y, width = 104f, size = 9f, color = secondary)
+        val valueHeight = drawText(canvas, value, x = x + 104, y = y, width = width - 104, size = 9.5f, bold = true, color = ink)
+        return maxOf(19f, valueHeight + 7f)
+    }
+
+    private fun hairline(canvas: Canvas, y: Float, pageWidth: Float) {
+        canvas.drawLine(MARGIN, y, pageWidth - MARGIN, y, Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 0.7f; color = rule })
+    }
+
+    /** Letter-spaced section label with a hairline underneath. */
+    private fun sectionTitle(canvas: Canvas, title: String, y: Float, pageWidth: Float): Float {
+        drawText(canvas, title, x = MARGIN, y = y, width = pageWidth - MARGIN * 2, size = 9f, bold = true, color = ink, letterSpacingEm = 1.8f / 9f)
+        return y + 20
+    }
+
+    private val columnOffsets = listOf(0f, 0.52f, 0.68f, 0.84f)
+
+    private fun tableHeader(canvas: Canvas, y: Float, pageWidth: Float): Float {
+        val width = pageWidth - MARGIN * 2
+        listOf("Description", "Hours/Units", "Rate", "Amount").forEachIndexed { index, title ->
+            val isFirst = index == 0
+            drawText(
+                canvas, title, x = MARGIN + width * columnOffsets[index], y = y, width = width * 0.16f,
+                size = 8f, color = secondary, align = if (isFirst) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_OPPOSITE,
+            )
+        }
+        val bottom = y + 15
+        hairline(canvas, bottom, pageWidth)
+        return bottom + 7
+    }
+
+    private fun tableRow(canvas: Canvas, y: Float, values: List<String>, pageWidth: Float): Float {
+        val width = pageWidth - MARGIN * 2
+        values.forEachIndexed { index, value ->
+            if (value.isEmpty()) return@forEachIndexed
+            val isFirst = index == 0
+            drawText(
+                canvas, value, x = MARGIN + width * columnOffsets[index], y = y,
+                width = if (isFirst) width * 0.5f else width * 0.16f,
+                size = 9.5f, bold = !isFirst, color = ink,
+                align = if (isFirst) Layout.Alignment.ALIGN_NORMAL else Layout.Alignment.ALIGN_OPPOSITE,
+            )
+        }
+        return y + ROW_HEIGHT
+    }
+
+    private fun totalRow(canvas: Canvas, y: Float, label: String, amount: Double, pageWidth: Float): Float {
+        hairline(canvas, y - 2, pageWidth)
+        val width = pageWidth - MARGIN * 2
+        val rowY = y + 7
+        drawText(canvas, label, x = MARGIN, y = rowY, width = width * 0.6f, size = 9.5f, bold = true, color = ink)
+        drawText(canvas, RosterFormat.money(amount), x = MARGIN + width * 0.84f, y = rowY, width = width * 0.16f, size = 10.5f, bold = true, color = ink, align = Layout.Alignment.ALIGN_OPPOSITE)
+        return rowY + 20
+    }
 }

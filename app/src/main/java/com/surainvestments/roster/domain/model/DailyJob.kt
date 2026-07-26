@@ -58,3 +58,14 @@ data class DailyJobAssignment(
             )
     }
 }
+
+/**
+ * Drops assignments whose `shiftId` no longer matches any of the staff's own currently-loaded
+ * shifts — e.g. a manager deletes a shift and re-adds a new one for the same day; the old
+ * assignment doc has no cascade-delete tying it to the shift's lifecycle, so it otherwise lingers
+ * forever, referencing a shiftId that no longer exists. Same self-heal shape as
+ * [com.surainvestments.roster.ui.staff.home.ClockInViewModel]'s orphaned-`ClockSession` handling.
+ * [validShiftIds] empty means "window hasn't loaded yet" — don't treat that as "every job orphaned".
+ */
+fun List<DailyJobAssignment>.excludingOrphaned(validShiftIds: Set<String>): List<DailyJobAssignment> =
+    if (validShiftIds.isEmpty()) this else filter { it.shiftId in validShiftIds }

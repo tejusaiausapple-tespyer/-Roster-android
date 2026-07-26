@@ -33,6 +33,8 @@ import com.surainvestments.roster.ui.theme.BrandIndigoStrong
 fun RosterNavHost(
     appearanceMode: AppearanceMode,
     onAppearanceModeChange: (AppearanceMode) -> Unit,
+    pendingDeepLink: String? = null,
+    onDeepLinkConsumed: () -> Unit = {},
 ) {
     val authViewModel: AuthViewModel = hiltViewModel()
     val route by authViewModel.route.collectAsState()
@@ -52,6 +54,8 @@ fun RosterNavHost(
                 authViewModel = authViewModel,
                 appearanceMode = appearanceMode,
                 onAppearanceModeChange = onAppearanceModeChange,
+                pendingDeepLink = pendingDeepLink,
+                onDeepLinkConsumed = onDeepLinkConsumed,
             )
             AppRoute.ManagerMain -> ManagerRootScreen(
                 authViewModel = authViewModel,

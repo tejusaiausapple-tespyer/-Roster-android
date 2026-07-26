@@ -110,14 +110,13 @@ criteria. Complexity: **S** 2–5d · **M** 1–2wk · **L** 2–4wk · **XL** 4
 ### Phase C — Home Tab Completion
 - **Features**: clock-in card (inline on the today shift, only when clockable — depends on Phase
   D existing first, so this sub-piece slips until then), Approved Hours 2×2 stat grid
-  (week/month/year/all-time via `HoursMetrics`-equivalent), notification bell with combined badge
-  (unread messages + pending Daily Jobs, capped at "9" — depends on Phase G), "Add to Calendar"
-  context action (depends on Phase F).
+  (week/month/year/all-time via `HoursMetrics`-equivalent), notification bell with badge
+  (pending Daily Jobs count, capped at "9" — depends on Phase G; no Messages — see Phase G's scope
+  note), "Add to Calendar" context action (depends on Phase F).
 - **Dependencies**: Phase A/B for data; bell badge and clock-in card can ship as visual
   placeholders until Phases D/G land, then wire live.
 - **Backend endpoints**: none new.
-- **Firestore collections**: `shifts`, `timesheets`, `messages` (own only), `daily_job_assignments`
-  (own only).
+- **Firestore collections**: `shifts`, `timesheets`, `daily_job_assignments` (own only).
 - **Security**: bell badge count must only ever query staff-own-scoped collections — never a
   collection-wide count.
 - **Offline**: standard live-listener behavior.
@@ -208,14 +207,20 @@ criteria. Complexity: **S** 2–5d · **M** 1–2wk · **L** 2–4wk · **XL** 4
   if denied).
 - **Complexity**: M.
 
-### Phase G — Daily Jobs (Home bell panel) + Messages inbox
-- **Features**: `NotificationsSheet`-equivalent panel reachable from the Home bell — unread
-  messages list (mark-as-read on open) + today's Daily Job assignments (complete/undo, title-only
-  stable sort, full-shift-date visibility).
+### Phase G — Daily Jobs (Home bell panel)
+> **Scope update (2026-07-24, product owner)**: Messages is explicitly **not needed** — not
+> deferred, dropped — for both iOS and Android. Every earlier reference to a staff Messages
+> inbox in this plan (bell badge formula, Home's Firestore reads, the `message-task` FCM event)
+> is superseded by this phase, which is Daily Jobs only. A re-verification this pass found PWA's
+> Messages feature fully live (nothing was actually removed there — see the note in `ANDROID-BUILD-PLAN.md`
+> §1.4) and iOS's staff-side inbox (`NotificationsSheet`) also genuinely live, not absent as
+> earlier assumed — but per this decision neither is a build target for Android regardless.
+- **Features**: `NotificationsSheet`-equivalent panel reachable from the Home bell — today's Daily
+  Job assignments (complete/undo, title-only stable sort, full-shift-date visibility). No messages
+  list.
 - **Dependencies**: Phase C (bell badge), Phase A.
 - **Backend endpoints**: none new.
-- **Firestore collections**: `messages` (own, read + read-flag update only), `daily_job_assignments`
-  (own, read + completion-field-only update).
+- **Firestore collections**: `daily_job_assignments` (own, read + completion-field-only update).
 - **Security**: the update write must touch **only** `completed/completedAt/completedBy` — any
   client code that spreads the whole assignment object into an update call risks tripping the
   rules' `hasOnly([...])` check and getting rejected (correct behavior, but build the client to
@@ -355,18 +360,18 @@ a tab that doesn't exist on iOS (which would break parity, not improve it).
 | Shifts | Part of **Roster** (no separate tab on iOS) |
 | Jobs / Tasks | Tab: **Tasks** (Tasks feature); **Daily Jobs** via the Home bell panel (separate feature, not a tab — see [IOS-STAFF-AUDIT.md](./IOS-STAFF-AUDIT.md) §8) |
 | Availability | Tab: **Availability** |
-| Notifications | Home bell panel (messages + Daily Jobs) + system push/local notifications — not a tab |
+| Notifications | Home bell panel (Daily Jobs — no Messages, see Phase G's scope note) + system push/local notifications — not a tab |
 | Payslips | Pushed from **Account** (not a tab) |
 | Profile | Part of **Account** |
 | Settings | Part of **Account** (Appearance, Security, About) |
 
 ### Home
 - **Purpose**: today-at-a-glance — current shift, quick stats, what needs attention.
-- **Screens**: Home root; sheet: Daily Jobs/Messages bell panel (Phase G).
+- **Screens**: Home root; sheet: Daily Jobs bell panel (Phase G).
 - **User actions**: pull-to-refresh, tap shift card → Roster detail, tap bell → notification
   panel, long-press shift → Add to Calendar, complete/undo a Daily Job from the bell panel.
-- **Firestore reads**: `shifts` (own, windowed), `timesheets` (own), `messages` (own, unread),
-  `daily_job_assignments` (own, today).
+- **Firestore reads**: `shifts` (own, windowed), `timesheets` (own), `daily_job_assignments`
+  (own, today).
 - **Firestore writes**: none directly from Home itself (writes happen in the sheets it opens).
 - **Cached data**: none beyond the standard live listeners.
 - **Refresh strategy**: live listeners + pull-to-refresh fallback.
@@ -534,9 +539,10 @@ after rostered end ("submit your hours," only if unfiled, 48h look-back).
   **`android-native` is already whitelisted** in the deployed rules, confirmed this pass. No
   backend change needed.
 - **Staff-relevant event set** (from the shared registry): `roster-published`,
-  `timesheet-approved`, `timesheet-rejected`, `timesheet-reminder`, `message-task`,
+  `timesheet-approved`, `timesheet-rejected`, `timesheet-reminder`,
   `shift-changed`, `shift-cancelled`, `shift-started`, `shift-ended`, `job-assigned`,
-  `jobs-all-completed`, `payslip-generated`.
+  `jobs-all-completed`, `payslip-generated`. (`message-task` excluded — Messages is out of scope,
+  see Phase G's scope note.)
 - **Background handling**: a data-only FCM payload with no `notification` block needs explicit
   handling in `onMessageReceived` to show a heads-up notification while foregrounded — this is
   the exact class of bug already fixed once on iOS (`apns.payload.aps.alert` missing); do not
@@ -555,15 +561,15 @@ unrecognized → URL-path substring fallback (`roster`/`history`→Roster, `task
 
 ### Badge counts
 
-Home bell badge = unread messages + pending Daily Jobs, capped display at "9" — query must be
-staff-own-scoped (§4), never a collection-wide count.
+Home bell badge = pending Daily Jobs count (no Messages — see Phase G's scope note), capped
+display at "9" — query must be staff-own-scoped (§4), never a collection-wide count.
 
 ### Notification history
 
 **Do not build a scrollable notification-history screen** — it doesn't exist on iOS (confirmed in
-[IOS-STAFF-AUDIT.md](./IOS-STAFF-AUDIT.md) §10). The Home bell's live panel (current unread
-messages + pending jobs) is the entire "history" surface on the reference platform; building more
-here would be scope creep past parity, not toward it.
+[IOS-STAFF-AUDIT.md](./IOS-STAFF-AUDIT.md) §10). The Home bell's live panel (pending Daily Jobs)
+is the entire "history" surface on the reference platform; building more here would be scope
+creep past parity, not toward it.
 
 ### Permission UX
 

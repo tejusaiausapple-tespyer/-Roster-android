@@ -20,9 +20,13 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EditCalendar
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -67,6 +71,7 @@ fun StaffHomeScreen(
     val state by viewModel.uiState.collectAsState()
     val clockSession by clockInViewModel.session.collectAsState()
     var submitTarget by remember { mutableStateOf<Pair<Shift, Timesheet?>?>(null) }
+    var showDailyJobs by remember { mutableStateOf(false) }
     val addToCalendar = rememberAddToCalendarAction()
 
     submitTarget?.let { (shift, timesheet) ->
@@ -77,6 +82,10 @@ fun StaffHomeScreen(
             onSubmitted = { submitTarget = null },
         )
         return
+    }
+
+    if (showDailyJobs) {
+        DailyJobsPanel(onDismiss = { showDailyJobs = false })
     }
 
     if (state.isLoading) {
@@ -102,7 +111,12 @@ fun StaffHomeScreen(
             modifier = Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            GreetingHeader(name = state.greetingName, formattedDate = state.formattedDate)
+            GreetingHeader(
+                name = state.greetingName,
+                formattedDate = state.formattedDate,
+                pendingJobsCount = state.pendingJobsCount,
+                onBellClick = { showDailyJobs = true },
+            )
             TodaySection(
                 shifts = state.todaysShifts,
                 clockSession = clockSession,
@@ -122,18 +136,40 @@ private fun isClockable(row: ShiftRowUi, session: ClockSession?): Boolean {
 }
 
 @Composable
-private fun GreetingHeader(name: String, formattedDate: String) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = "Hi, $name",
-            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(
-            text = formattedDate,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+private fun GreetingHeader(name: String, formattedDate: String, pendingJobsCount: Int, onBellClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = "Hi, $name",
+                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = formattedDate,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        BadgedBox(
+            badge = {
+                // Capped display at "9" (not "9+") — matches iOS's literal convention.
+                if (pendingJobsCount > 0) {
+                    Badge { Text(if (pendingJobsCount > 9) "9" else pendingJobsCount.toString()) }
+                }
+            },
+        ) {
+            IconButton(onClick = onBellClick) {
+                Icon(
+                    imageVector = Icons.Outlined.Notifications,
+                    contentDescription = "Today's jobs",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 

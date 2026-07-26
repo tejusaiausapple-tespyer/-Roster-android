@@ -1,5 +1,6 @@
 package com.surainvestments.roster.data.repository
 
+import android.util.Log
 import com.google.firebase.firestore.FirebaseFirestore
 import com.surainvestments.roster.data.di.ApplicationScope
 import com.surainvestments.roster.domain.model.RosterTask
@@ -23,7 +24,10 @@ class RosterTaskRepository @Inject constructor(
     fun activeTasks(): Flow<List<RosterTask>> = callbackFlow {
         val registration = firestore.collection("tasks")
             .whereEqualTo("active", true)
-            .addSnapshotListener { snapshot, _ ->
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.w("RosterTaskRepository", "activeTasks() listener failed", error)
+                }
                 val tasks = snapshot?.documents?.mapNotNull { doc ->
                     doc.data?.let { RosterTask.fromDocument(doc.id, it) }
                 } ?: emptyList()
