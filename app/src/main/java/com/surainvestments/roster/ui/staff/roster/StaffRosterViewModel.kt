@@ -3,6 +3,7 @@ package com.surainvestments.roster.ui.staff.roster
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.surainvestments.roster.data.repository.AuthRepository
+import com.surainvestments.roster.data.repository.AvailabilityLocksRepository
 import com.surainvestments.roster.data.repository.ShiftRepository
 import com.surainvestments.roster.data.repository.TimesheetRepository
 import com.surainvestments.roster.domain.model.BusinessRules
@@ -62,6 +63,7 @@ data class RosterUiState(
     val canGoPrevWeek: Boolean = true,
     val canGoNextWeek: Boolean = true,
     val markedKeys: Set<String> = emptySet(),
+    val lockedKeys: Set<String> = emptySet(),
     val stats: WeekStatsUi = WeekStatsUi(),
     val actionNeeded: List<ActionNeededUi> = emptyList(),
     val dayGroups: List<DayGroupUi> = emptyList(),
@@ -78,6 +80,7 @@ class StaffRosterViewModel @Inject constructor(
     private val authRepository: AuthRepository,
     private val shiftRepository: ShiftRepository,
     private val timesheetRepository: TimesheetRepository,
+    availabilityLocksRepository: AvailabilityLocksRepository,
 ) : ViewModel() {
 
     private val weekOffsetFlow = MutableStateFlow(0)
@@ -96,8 +99,9 @@ class StaffRosterViewModel @Inject constructor(
                     timesheetRepository.staffTimesheetsByShiftId(staffId),
                     weekOffsetFlow,
                     selectedDayKeyFlow,
-                ) { shifts, timesheetsByShiftId, weekOffset, selectedDayKey ->
-                    buildUiState(shifts, timesheetsByShiftId, weekOffset, selectedDayKey)
+                    availabilityLocksRepository.lockedWeeks,
+                ) { shifts, timesheetsByShiftId, weekOffset, selectedDayKey, lockedWeeks ->
+                    buildUiState(shifts, timesheetsByShiftId, weekOffset, selectedDayKey, lockedWeeks)
                 }
             }
         }
@@ -141,6 +145,7 @@ class StaffRosterViewModel @Inject constructor(
         timesheetsByShiftId: Map<String, Timesheet>,
         weekOffset: Int,
         selectedDayKey: String,
+        lockedWeeks: Set<String>,
     ): RosterUiState {
         val now = Instant.now()
         val bounds = BusinessRules.shiftWeekOffsetBounds(now)
@@ -197,6 +202,12 @@ class StaffRosterViewModel @Inject constructor(
             canGoPrevWeek = clampedOffset > bounds.first,
             canGoNextWeek = clampedOffset < bounds.last,
             markedKeys = weekShifts.map { it.date }.toSet(),
+            // A manager-locked week means that week's roster is finalized — surfaced here as the
+            // same dimmed indicator Availability shows, using the same shared, read-only
+            // settings/availabilityLocks doc. Deliberately not "past/current is always locked"
+            // (unlike BusinessRules.isWeekLockedForStaff's Availability-edit semantics) — every
+            // historical week is trivially true for that and would just be dimming noise here.
+            lockedKeys = if (lockedWeeks.contains(mondayKey)) weekDayKeys.toSet() else emptySet(),
             stats = WeekStatsUi(
                 shiftsCount = weekShifts.size,
                 hoursLabel = RosterFormat.decimalHours(weekShifts.sumOf { it.scheduledHours }),

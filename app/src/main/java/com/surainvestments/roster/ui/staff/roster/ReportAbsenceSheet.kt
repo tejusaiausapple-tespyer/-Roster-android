@@ -27,6 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -34,8 +35,11 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.surainvestments.roster.domain.model.RosterFormat
 import com.surainvestments.roster.domain.model.Shift
 import com.surainvestments.roster.domain.model.Timesheet
+import com.surainvestments.roster.domain.model.friendlyMessage
 import com.surainvestments.roster.ui.components.Banner
 import com.surainvestments.roster.ui.components.BannerKind
+import com.surainvestments.roster.ui.components.HapticEvent
+import com.surainvestments.roster.ui.components.Haptics
 import com.surainvestments.roster.ui.components.PrimaryButton
 import com.surainvestments.roster.ui.components.RosterCard
 import com.surainvestments.roster.ui.components.ScreenPillTopBar
@@ -59,6 +63,7 @@ fun ReportAbsenceSheet(
     var isWorking by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
     val absenceTint = StatusColors.Absent
 
     BackHandler(onBack = onDismiss)
@@ -128,9 +133,11 @@ fun ReportAbsenceSheet(
                         isWorking = true
                         try {
                             viewModel.reportAbsence(shift, existing, reason)
+                            Haptics.perform(haptics, HapticEvent.SubmitSuccess)
                             onReported()
                         } catch (e: Exception) {
-                            errorMessage = e.message ?: "Something went wrong."
+                            Haptics.perform(haptics, HapticEvent.SubmitError)
+                            errorMessage = friendlyMessage(e, "Something went wrong.")
                         } finally {
                             isWorking = false
                         }

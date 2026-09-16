@@ -39,6 +39,16 @@ object NotificationPoster {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
+            // RosterMessagingService (push) and LocalAlertObserver (live-listener backup) share
+            // one notification id per (event, shiftId) — see FcmEventRouting.notificationId — so
+            // whichever of the two arrives second is meant to silently replace the first rather
+            // than re-alert. Without this flag, Android sounds/vibrates/peeks again on every
+            // notify() call regardless of id reuse, so a same-second local+push race (or FCM's
+            // own at-least-once redelivery of the exact same push) would still buzz the device
+            // twice even though the shade only ever shows one entry. `true` only suppresses the
+            // re-alert while the earlier notification with this id is still showing/undismissed —
+            // a genuinely later notification of the same event type still alerts normally.
+            .setOnlyAlertOnce(true)
             .build()
 
         NotificationManagerCompat.from(context).notify(notificationId, notification)

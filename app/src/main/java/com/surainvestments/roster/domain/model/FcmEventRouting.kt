@@ -18,15 +18,24 @@ import com.surainvestments.roster.notifications.NotificationChannels
  */
 object FcmEventRouting {
 
-    /** `timesheet-rejected` needs the shiftId to land on Submit Hours for that specific shift; every other routed event just needs the tab. */
+    /**
+     * `timesheet-rejected` needs the shiftId to land on Submit Hours for that specific shift;
+     * `payslip-generated` lands on Account (Payslips is pushed from there, not a tab — a
+     * generic `"home"` fallback would be the wrong destination, the same class of bug as iOS's
+     * still-open payslip-notification routing issue, `docs/NOTIFICATION-SYSTEM-AUDIT-REPORT.md`
+     * §5.7); every other routed event just needs the tab.
+     */
     fun deepLink(event: String?, shiftId: String?): String = when (event) {
         "timesheet-rejected" -> shiftId?.let { "submit:$it" } ?: "roster"
         "timesheet-approved", "roster-published", "shift-changed", "shift-cancelled" -> "roster"
+        "payslip-generated" -> "account"
         else -> "home"
     }
 
     fun channelId(event: String?): String = when (event) {
-        "roster-published", "shift-changed", "shift-cancelled", "shift-started", "shift-ended" -> NotificationChannels.SHIFT_UPCOMING
+        "roster-published", "shift-changed", "shift-cancelled", "shift-started", "shift-ended",
+        "shift-start-6h", "shift-start-30m",
+        -> NotificationChannels.SHIFT_UPCOMING
         "timesheet-approved", "timesheet-rejected", "timesheet-reminder" -> NotificationChannels.TIMESHEET_ACTION
         "job-assigned", "jobs-all-completed" -> NotificationChannels.TASKS
         else -> NotificationChannels.GENERAL
@@ -43,5 +52,23 @@ object FcmEventRouting {
         "jobs-all-completed" -> "All jobs completed"
         "payslip-generated" -> "Payslip ready"
         else -> "Rosterra"
+    }
+
+    /**
+     * Canonical Android notification ID for an (event, shiftId) pair. `LocalAlertObserver` (a live
+     * Firestore-listener backup) and `RosterMessagingService` (the FCM push) both fire for the same
+     * underlying `roster-published`/`timesheet-approved`/`timesheet-rejected` events — they must
+     * produce the *same* ID for the same event+shift so `NotificationManager`'s same-ID-replaces
+     * behavior collapses them into one notification instead of showing both. Every other event only
+     * ever arrives via push, so it's keyed on the event name alone.
+     */
+    fun notificationId(event: String?, shiftId: String?): Int {
+        val key = if (shiftId != null && hasLocalAlertCounterpart(event)) "$event-$shiftId" else event
+        return (key ?: "rosterra").hashCode()
+    }
+
+    private fun hasLocalAlertCounterpart(event: String?): Boolean = when (event) {
+        "roster-published", "timesheet-approved", "timesheet-rejected" -> true
+        else -> false
     }
 }

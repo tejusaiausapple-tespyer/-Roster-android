@@ -6,6 +6,7 @@ import com.surainvestments.roster.data.di.ApplicationScope
 import com.surainvestments.roster.data.remote.SendNotificationRequest
 import com.surainvestments.roster.data.remote.WorkerApiService
 import com.surainvestments.roster.domain.model.DailyJobAssignment
+import com.surainvestments.roster.domain.model.RosterCalendar
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,6 +27,7 @@ class DailyJobRepository @Inject constructor(
     @ApplicationScope private val appScope: CoroutineScope,
 ) {
     private val staffTodayCache = ConcurrentHashMap<String, StateFlow<List<DailyJobAssignment>>>()
+    private val staffWindowCache = ConcurrentHashMap<String, StateFlow<List<DailyJobAssignment>>>()
 
     /** Live list of every job assigned to a shift on [dateKey] (yyyy-MM-dd), any staff member. */
     fun assignmentsForDate(dateKey: String): Flow<List<DailyJobAssignment>> = callbackFlow {
@@ -63,6 +65,38 @@ class DailyJobRepository @Inject constructor(
         staffTodayCache.getOrPut("$staffId:$todayKey") {
             assignmentsForStaffOnDate(staffId, todayKey).stateIn(appScope, SharingStarted.WhileSubscribed(5_000), emptyList())
         }
+
+    /**
+     * [staffId]'s assignments across the whole shift window (same ±28/56-day bound as
+     * [com.surainvestments.roster.data.repository.ShiftRepository.staffShiftsWindow]), NOT scoped
+     * to a single day. For a long-lived subscriber (DailyJobReminderScheduler, an
+     * Application-singleton with no screen lifecycle to naturally re-subscribe it) — a
+     * single-day-scoped query like [todaysAssignments] silently goes stale the moment local
+     * midnight passes, since the Firestore `date` filter it was built with never changes on its
+     * own. This wide window stays valid for weeks, so the caller can re-derive "today" fresh on
+     * every emission instead.
+     */
+    fun assignmentsForStaffWindow(staffId: String): Flow<List<DailyJobAssignment>> =
+        staffWindowCache.getOrPut(staffId) {
+            val startKey = RosterCalendar.dateKey(-28)
+            val endKey = RosterCalendar.dateKey(56)
+            assignmentsForStaffInRange(staffId, startKey, endKey)
+                .stateIn(appScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        }
+
+    private fun assignmentsForStaffInRange(staffId: String, startKey: String, endKey: String): Flow<List<DailyJobAssignment>> = callbackFlow {
+        val registration = firestore.collection("daily_job_assignments")
+            .whereEqualTo("staffId", staffId)
+            .whereGreaterThanOrEqualTo("date", startKey)
+            .whereLessThanOrEqualTo("date", endKey)
+            .addSnapshotListener { snapshot, _ ->
+                val assignments = snapshot?.documents?.mapNotNull { doc ->
+                    doc.data?.let { DailyJobAssignment.fromDocument(doc.id, it) }
+                } ?: emptyList()
+                trySend(assignments)
+            }
+        awaitClose { registration.remove() }
+    }
 
     /**
      * Toggles one assignment's completion — writes **only** `completed/completedAt/completedBy`

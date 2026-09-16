@@ -4,6 +4,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import javax.crypto.Cipher
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -13,6 +14,15 @@ private const val ALLOWED_AUTHENTICATORS =
 /** Whether this device can do biometric-or-device-credential auth — mirrors iOS's `.deviceOwnerAuthentication` check. */
 fun isDeviceAuthSupported(activity: FragmentActivity): Boolean =
     BiometricManager.from(activity).canAuthenticate(ALLOWED_AUTHENTICATORS) == BiometricManager.BIOMETRIC_SUCCESS
+
+/**
+ * Whether this device can do **Class-3/strong** biometric auth — the only class Android permits
+ * to unlock a Keystore key bound via `BiometricPrompt.CryptoObject`, so this gates quick-login
+ * (unlike [isDeviceAuthSupported]'s app-lock gate, which accepts weak biometric or a device
+ * PIN/pattern since it never touches an actual cryptographic key).
+ */
+fun isStrongBiometricSupported(activity: FragmentActivity): Boolean =
+    BiometricManager.from(activity).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
 
 /**
  * Shows the system biometric/device-credential prompt and suspends until the
@@ -48,5 +58,45 @@ suspend fun FragmentActivity.authenticateDeviceOwner(title: String, subtitle: St
             .build()
 
         prompt.authenticate(info)
+        continuation.invokeOnCancellation { prompt.cancelAuthentication() }
+    }
+
+/**
+ * Like [authenticateDeviceOwner], but ties the biometric check to a specific Keystore-backed
+ * [cipher] via `BiometricPrompt.CryptoObject` — required for [QuickLoginCredentialStore]'s
+ * encrypt/decrypt operations, which only succeed after a live Class-3 biometric check against
+ * *this exact cipher instance*. Returns that same cipher, now authorized, on success — or null on
+ * failure/cancellation. Strong-only: unlike the app-lock gate, a CryptoObject-bound prompt cannot
+ * fall back to a device PIN/pattern.
+ */
+suspend fun FragmentActivity.authenticateWithCryptoObject(title: String, subtitle: String, cipher: Cipher): Cipher? =
+    suspendCancellableCoroutine { continuation ->
+        val executor = ContextCompat.getMainExecutor(this)
+        val prompt = BiometricPrompt(
+            this,
+            executor,
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    if (continuation.isActive) continuation.resume(result.cryptoObject?.cipher)
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    if (continuation.isActive) continuation.resume(null)
+                }
+
+                override fun onAuthenticationFailed() {
+                    // A single failed attempt — the prompt stays open for retry, don't resume yet.
+                }
+            },
+        )
+
+        val info = BiometricPrompt.PromptInfo.Builder()
+            .setTitle(title)
+            .setSubtitle(subtitle)
+            .setNegativeButtonText("Cancel")
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            .build()
+
+        prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))
         continuation.invokeOnCancellation { prompt.cancelAuthentication() }
     }

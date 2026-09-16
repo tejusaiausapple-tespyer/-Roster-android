@@ -12,6 +12,7 @@ plugins {
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics.plugin)
     alias(libs.plugins.firebase.appdistribution.plugin)
+    alias(libs.plugins.firebase.perf.plugin)
 }
 
 // Release signing lives outside git in keystore.properties (see .gitignore) — back up
@@ -129,6 +130,12 @@ dependencies {
     implementation(libs.firebase.messaging)
     implementation(libs.firebase.storage)
     implementation(libs.firebase.crashlytics)
+    implementation(libs.firebase.perf)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
 
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit.core)

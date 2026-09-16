@@ -85,12 +85,18 @@ object ShiftReminderPlanner {
         }
 
         // Pre-shift countdown — suppressed only if the staff member reported/was marked absent.
+        // Deliberately NO local "6h"/"30m" slots: the Worker's own cron (`shift-start-6h`/
+        // `shift-start-30m`, worker/cron/shiftStart.ts) independently pushes at those exact same
+        // two instants to every platform with a registered FCM token, Android included — a local
+        // slot at the same offset would show as a second, separately-worded banner a second or
+        // two apart. This is a confirmed, currently-live duplicate on iOS (still open — see
+        // `docs/NOTIFICATION-SYSTEM-AUDIT-REPORT.md` §5.3/§1.4) that Android would otherwise
+        // reproduce; the fix here matches that report's own recommendation (suppress the local
+        // slot, rely on the shared server cron). 24h/1h/5m have no server-cron counterpart at all
+        // and stay local-only, same as forgot-start/forgot-end/submit-hours below.
         if (!absent) {
             add("24h", start.minus(24, ChronoUnit.HOURS), "Shift tomorrow", "You have a shift tomorrow at $startTime.", NotificationChannels.SHIFT_UPCOMING, "home")
-            add("6h", start.minus(6, ChronoUnit.HOURS), "Shift today", "Your shift starts in 6 hours, at $startTime.", NotificationChannels.SHIFT_UPCOMING, "home")
             add("1h", start.minus(1, ChronoUnit.HOURS), "Shift soon", "Your shift starts in 1 hour, at $startTime.", NotificationChannels.SHIFT_UPCOMING, "home")
-            val thirtyBody = shift.location?.takeIf { it.isNotBlank() }?.let { "Your shift is at $it." } ?: "Your shift starts in 30 minutes."
-            add("30m", start.minus(30, ChronoUnit.MINUTES), "Shift in 30 minutes", thirtyBody, NotificationChannels.SHIFT_UPCOMING, "home")
             add("5m", start.minus(5, ChronoUnit.MINUTES), "Ready to start?", "Start Shift is now available.", NotificationChannels.SHIFT_UPCOMING, "home")
         }
 

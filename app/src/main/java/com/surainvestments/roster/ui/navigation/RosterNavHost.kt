@@ -26,7 +26,8 @@ import com.surainvestments.roster.ui.auth.AuthViewModel
 import com.surainvestments.roster.ui.auth.ChangePasswordScreen
 import com.surainvestments.roster.ui.auth.DeviceAuthGateScreen
 import com.surainvestments.roster.ui.auth.LoginScreen
-import com.surainvestments.roster.ui.screens.PlaceholderScreen
+import com.surainvestments.roster.ui.auth.ProfileCompletionScreen
+import com.surainvestments.roster.ui.components.OfflineIndicator
 import com.surainvestments.roster.ui.theme.BrandIndigoStrong
 
 @Composable
@@ -39,30 +40,36 @@ fun RosterNavHost(
     val authViewModel: AuthViewModel = hiltViewModel()
     val route by authViewModel.route.collectAsState()
 
-    AnimatedContent(
-        targetState = route,
-        transitionSpec = { fadeIn() togetherWith fadeOut() },
-        label = "app-route",
-    ) { current ->
-        when (current) {
-            AppRoute.Restoring, AppRoute.ProfileLoading -> LoadingScreen()
-            AppRoute.Login -> LoginScreen(viewModel = authViewModel)
-            AppRoute.ForcedPasswordChange -> ChangePasswordScreen(isForced = true)
-            AppRoute.ProfileCompletion -> PlaceholderScreen(title = "Complete your profile")
-            AppRoute.DeviceAuthGate -> DeviceAuthGateScreen(viewModel = authViewModel)
-            AppRoute.StaffMain -> StaffRootScreen(
-                authViewModel = authViewModel,
-                appearanceMode = appearanceMode,
-                onAppearanceModeChange = onAppearanceModeChange,
-                pendingDeepLink = pendingDeepLink,
-                onDeepLinkConsumed = onDeepLinkConsumed,
-            )
-            AppRoute.ManagerMain -> ManagerRootScreen(
-                authViewModel = authViewModel,
-                appearanceMode = appearanceMode,
-                onAppearanceModeChange = onAppearanceModeChange,
-            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = route,
+            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            label = "app-route",
+        ) { current ->
+            when (current) {
+                AppRoute.Restoring, AppRoute.ProfileLoading -> LoadingScreen()
+                AppRoute.Login -> LoginScreen(viewModel = authViewModel)
+                AppRoute.ForcedPasswordChange -> ChangePasswordScreen(isForced = true)
+                AppRoute.ProfileCompletion -> ProfileCompletionScreen()
+                AppRoute.DeviceAuthGate -> DeviceAuthGateScreen(viewModel = authViewModel)
+                AppRoute.StaffMain -> StaffRootScreen(
+                    authViewModel = authViewModel,
+                    appearanceMode = appearanceMode,
+                    onAppearanceModeChange = onAppearanceModeChange,
+                    pendingDeepLink = pendingDeepLink,
+                    onDeepLinkConsumed = onDeepLinkConsumed,
+                )
+                AppRoute.ManagerMain -> ManagerRootScreen(
+                    authViewModel = authViewModel,
+                    appearanceMode = appearanceMode,
+                    onAppearanceModeChange = onAppearanceModeChange,
+                )
+            }
         }
+
+        // Mounted once here so it applies app-wide across every route, rather than duplicated
+        // per-screen — drawn last (on top) so it's never obscured by a route's own content.
+        OfflineIndicator(modifier = Modifier.align(Alignment.TopCenter))
     }
 }
 

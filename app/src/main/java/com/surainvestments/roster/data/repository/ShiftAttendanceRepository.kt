@@ -7,7 +7,9 @@ import com.google.firebase.firestore.SetOptions
 import com.surainvestments.roster.data.di.ApplicationScope
 import com.surainvestments.roster.data.remote.SendNotificationRequest
 import com.surainvestments.roster.data.remote.WorkerApiService
+import com.surainvestments.roster.domain.model.BusinessRules
 import com.surainvestments.roster.domain.model.Fix
+import com.surainvestments.roster.domain.model.RosterCalendar
 import com.surainvestments.roster.domain.model.Shift
 import com.surainvestments.roster.domain.model.ShiftAttendance
 import java.time.Instant
@@ -49,13 +51,19 @@ class ShiftAttendanceRepository @Inject constructor(
     }
 
     /**
-     * Live list of [staffId]'s own verified attendance records — a pure equality query on
-     * `staffId`, so it needs no composite index. Matches the `shift_attendance` rules' own
-     * read scope exactly (own records only, see `IOS-STAFF-AUDIT.md` §17).
+     * Live list of [staffId]'s own verified attendance records, bounded to the last
+     * [BusinessRules.shiftWindowDaysBack] days — matches the deployed `shift_attendance`
+     * composite index (`staffId` ASC, `date` ASC) exactly, so no backend change is needed. An
+     * unbounded per-staff query here would read a staff member's *entire* attendance history on
+     * every listener tick (a real, growing cost with no upper bound) for no benefit: attendance
+     * records only ever exist for shifts inside the same rolling window shifts themselves are
+     * fetched in, so nothing outside it is reachable from the UI anyway.
      */
     fun attendanceForStaff(staffId: String): Flow<List<ShiftAttendance>> = callbackFlow {
+        val cutoff = RosterCalendar.dateKey(-BusinessRules.shiftWindowDaysBack.toLong())
         val registration = firestore.collection("shift_attendance")
             .whereEqualTo("staffId", staffId)
+            .whereGreaterThanOrEqualTo("date", cutoff)
             .addSnapshotListener { snapshot, _ ->
                 val records = snapshot?.documents?.mapNotNull { doc ->
                     doc.data?.let { ShiftAttendance.fromDocument(doc.id, it) }

@@ -8,6 +8,7 @@ import com.surainvestments.roster.data.repository.AvailabilityRepository
 import com.surainvestments.roster.domain.model.BusinessRules
 import com.surainvestments.roster.domain.model.DayAvailability
 import com.surainvestments.roster.domain.model.RosterCalendar
+import com.surainvestments.roster.domain.model.friendlyMessage
 import com.surainvestments.roster.domain.model.RosterFormat
 import com.surainvestments.roster.domain.model.UserAvailability
 import com.surainvestments.roster.domain.model.Weekday
@@ -130,7 +131,7 @@ class StaffAvailabilityViewModel @Inject constructor(
                 editedDaysFlow.value = null
                 saveAsDefaultFlow.value = false
             } catch (e: Exception) {
-                errorFlow.value = e.message ?: "Availability could not be saved. Please try again."
+                errorFlow.value = friendlyMessage(e, "Availability could not be saved. Please try again.")
             } finally {
                 savingFlow.value = false
             }

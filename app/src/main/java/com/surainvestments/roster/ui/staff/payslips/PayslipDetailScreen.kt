@@ -14,8 +14,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import android.print.PrintAttributes
+import android.print.PrintManager
+import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Payments
+import androidx.compose.material.icons.outlined.Print
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -32,12 +36,14 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.surainvestments.roster.domain.model.Payslip
 import com.surainvestments.roster.ui.components.Banner
 import com.surainvestments.roster.ui.components.BannerKind
 import com.surainvestments.roster.ui.components.PrimaryButton
+import com.surainvestments.roster.ui.components.QuietOutlinedButton
 import com.surainvestments.roster.ui.components.ScreenPillTopBar
 import com.surainvestments.roster.ui.components.ScreenPillTopBarHeight
 import com.surainvestments.roster.ui.components.TopEdgeFade
@@ -95,25 +101,46 @@ fun PayslipDetailScreen(
                 )
             }
 
-            PrimaryButton(
-                text = "Share payslip",
-                enabled = state.pdfFile != null,
-                loading = state.isSharing,
-                leadingIcon = Icons.Outlined.Share,
-                onClick = {
-                    scope.launch {
-                        viewModel.sharePreparedFile { file ->
-                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                            val intent = Intent(Intent.ACTION_SEND).apply {
-                                type = "application/pdf"
-                                putExtra(Intent.EXTRA_STREAM, uri)
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrimaryButton(
+                    text = "Share",
+                    enabled = state.pdfFile != null,
+                    loading = state.isPreparingFile,
+                    leadingIcon = Icons.Outlined.Share,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        scope.launch {
+                            viewModel.withPreparedFile { file ->
+                                val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                                val intent = Intent(Intent.ACTION_SEND).apply {
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_STREAM, uri)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                context.startActivity(Intent.createChooser(intent, "Share payslip"))
                             }
-                            context.startActivity(Intent.createChooser(intent, "Share payslip"))
                         }
-                    }
-                },
-            )
+                    },
+                )
+                QuietOutlinedButton(
+                    text = "Print",
+                    enabled = state.pdfFile != null,
+                    leadingIcon = Icons.Outlined.Print,
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        scope.launch {
+                            viewModel.withPreparedFile { file ->
+                                val printManager = ContextCompat.getSystemService(context, PrintManager::class.java)
+                                printManager?.print(
+                                    "Payslip",
+                                    PdfPrintAdapter(file),
+                                    PrintAttributes.Builder().build(),
+                                )
+                            }
+                        }
+                    },
+                )
+            }
 
             Box(modifier = Modifier.height(24.dp))
         }

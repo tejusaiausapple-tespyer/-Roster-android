@@ -1,10 +1,8 @@
 package com.surainvestments.roster.ui.staff.tasks
 
 import android.Manifest
-import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -49,12 +47,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
-import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import coil.compose.AsyncImage
 import com.surainvestments.roster.domain.model.RosterFormat
 import com.surainvestments.roster.domain.model.RosterTask
 import com.surainvestments.roster.domain.model.TaskCompletion
+import com.surainvestments.roster.domain.model.friendlyMessage
 import com.surainvestments.roster.ui.components.Banner
 import com.surainvestments.roster.ui.components.BannerKind
 import com.surainvestments.roster.ui.components.PrimaryButton
@@ -66,8 +64,6 @@ import com.surainvestments.roster.ui.components.SoftTag
 import com.surainvestments.roster.ui.components.TopEdgeFade
 import com.surainvestments.roster.ui.theme.ScreenPadding
 import com.surainvestments.roster.ui.theme.StatusColors
-import java.io.File
-import java.util.UUID
 import kotlinx.coroutines.launch
 
 /**
@@ -93,36 +89,34 @@ fun TaskCompletionDetailSheet(
     var isSubmitting by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var fullscreenUrl by remember { mutableStateOf<String?>(null) }
-    var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+    var showCamera by remember { mutableStateOf(false) }
 
-    val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-        val uri = pendingCaptureUri
-        pendingCaptureUri = null
-        if (success && uri != null) {
-            scope.launch {
-                viewModel.loadBitmap(uri)?.let { capturedImages = capturedImages + it }
-            }
-        }
-    }
     val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) {
-            val uri = createCaptureUri(context)
-            pendingCaptureUri = uri
-            takePictureLauncher.launch(uri)
-        }
+        if (granted) showCamera = true
     }
 
     fun openCamera() {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-            val uri = createCaptureUri(context)
-            pendingCaptureUri = uri
-            takePictureLauncher.launch(uri)
+            showCamera = true
         } else {
             cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
         }
     }
 
     BackHandler(onBack = onDismiss)
+
+    if (showCamera) {
+        Dialog(onDismissRequest = { showCamera = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            CameraCaptureScreen(
+                onCaptured = { bitmap ->
+                    capturedImages = capturedImages + bitmap
+                    showCamera = false
+                },
+                onDismiss = { showCamera = false },
+            )
+        }
+        return
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
@@ -231,7 +225,7 @@ fun TaskCompletionDetailSheet(
                                 viewModel.complete(task, dateKey, capturedImages, note)
                                 onDismiss()
                             } catch (e: Exception) {
-                                error = e.message ?: "Couldn't submit. Please try again."
+                                error = friendlyMessage(e, "Couldn't submit. Please try again.")
                             } finally {
                                 isSubmitting = false
                             }
@@ -329,10 +323,4 @@ private fun FullscreenImageViewer(url: String, onDismiss: () -> Unit) {
             }
         }
     }
-}
-
-private fun createCaptureUri(context: Context): Uri {
-    val dir = File(context.cacheDir, "task_photo_captures").apply { mkdirs() }
-    val file = File(dir, "capture_${UUID.randomUUID()}.jpg")
-    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
 }

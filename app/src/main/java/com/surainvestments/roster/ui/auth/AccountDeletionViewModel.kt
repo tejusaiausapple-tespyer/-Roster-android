@@ -3,6 +3,7 @@ package com.surainvestments.roster.ui.auth
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.surainvestments.roster.data.repository.AccountDeletionRepository
+import com.surainvestments.roster.domain.model.friendlyMessage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +36,7 @@ class AccountDeletionViewModel @Inject constructor(
                 repository.requestOwnAccountDeletion()
                 _uiState.value = _uiState.value.copy(isWorking = false, successMessage = "Deletion request sent to your manager.")
             } catch (e: Exception) {
-                _uiState.value = _uiState.value.copy(isWorking = false, errorMessage = e.message ?: "Couldn't send request")
+                _uiState.value = _uiState.value.copy(isWorking = false, errorMessage = friendlyMessage(e, "Couldn't send request"))
             }
         }
     }

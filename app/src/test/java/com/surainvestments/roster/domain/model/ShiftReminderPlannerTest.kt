@@ -49,17 +49,21 @@ class ShiftReminderPlannerTest {
 
     @Test
     fun `future shift with no timesheet emits every future pre-start slot plus forgot-start and submit-hours`() {
-        // Shift two days out (17:00–21:00) so all five pre-start instants are still in the future.
+        // Shift two days out (17:00–21:00) so all three local pre-start instants are still in the future.
+        // No local "6h"/"30m" — those are deliberately left to the Worker's own cron push to
+        // avoid a duplicate banner (see the doc comment on ShiftReminderPlanner.remindersFor).
         val shifts = listOf(shift("s1", "2026-06-03", "17:00", "21:00"))
 
         val reminders = ShiftReminderPlanner.plan(shifts, emptyMap(), clockedInShiftId = null, now = now)
 
         // No forgot-end (not clocked in). Every other slot present.
         assertEquals(
-            setOf("24h", "6h", "1h", "30m", "5m", "forgot-start", "submit-hours"),
+            setOf("24h", "1h", "5m", "forgot-start", "submit-hours"),
             tags(reminders),
         )
         assertFalse("forgot-end only arms while clocked in", "forgot-end" in tags(reminders))
+        assertFalse("6h is left to the server cron push, not scheduled locally", "6h" in tags(reminders))
+        assertFalse("30m is left to the server cron push, not scheduled locally", "30m" in tags(reminders))
     }
 
     @Test
@@ -80,9 +84,7 @@ class ShiftReminderPlannerTest {
         val byTag = reminders.associate { it.slotTag to it.fireAt }
 
         assertEquals(start.minusSeconds(24 * 3600), byTag["24h"])
-        assertEquals(start.minusSeconds(6 * 3600), byTag["6h"])
         assertEquals(start.minusSeconds(3600), byTag["1h"])
-        assertEquals(start.minusSeconds(30 * 60), byTag["30m"])
         assertEquals(start.minusSeconds(5 * 60), byTag["5m"])
     }
 
@@ -142,14 +144,6 @@ class ShiftReminderPlannerTest {
         assertTrue("s1" in scheduledShiftIds)
     }
 
-    @Test
-    fun `30m slot names the location when present, falls back otherwise`() {
-        val withLoc = ShiftReminderPlanner.plan(listOf(shift("s1", "2026-06-03", "17:00", "21:00", location = "Rundle Mall")), emptyMap(), null, now)
-        assertTrue(withLoc.first { it.slotTag == "30m" }.body.contains("Rundle Mall"))
-
-        val noLoc = ShiftReminderPlanner.plan(listOf(shift("s2", "2026-06-03", "17:00", "21:00", location = null)), emptyMap(), null, now)
-        assertFalse(noLoc.first { it.slotTag == "30m" }.body.contains("null"))
-    }
 
     @Test
     fun `channel + deep link routing matches the slot's purpose`() {

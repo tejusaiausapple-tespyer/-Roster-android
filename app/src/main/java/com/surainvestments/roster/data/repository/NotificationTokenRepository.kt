@@ -50,6 +50,13 @@ class NotificationTokenRepository @Inject constructor(
         val previousToken = notificationPreferences.lastToken()
         if (previousToken != null && previousToken != token) {
             runCatching { activateDevice(token = token, previousToken = previousToken, reason = "refresh") }
+            // The old token doc would otherwise sit around indefinitely as `enabled: true` until
+            // the Worker's own stale-token pruning notices a failed send on next use — a real,
+            // if narrow, double-send window server-side (this device's rotated-away token can't
+            // actually receive anything anymore, but the Worker doesn't know that yet and will
+            // keep trying it). Deleting it here closes that window immediately instead of waiting
+            // on the Worker to discover it the hard way.
+            runCatching { deleteTokenDoc(uid, previousToken) }
         }
         notificationPreferences.setLastToken(token)
     }
@@ -90,6 +97,12 @@ class NotificationTokenRepository @Inject constructor(
             if (!alreadyExists) put("createdAt", FieldValue.serverTimestamp())
         }
         docRef.set(data, SetOptions.merge()).await()
+    }
+
+    private suspend fun deleteTokenDoc(uid: String, token: String) {
+        firestore.collection("users").document(uid)
+            .collection("notificationTokens").document(URLEncoder.encode(token, "UTF-8"))
+            .delete().await()
     }
 
     /** POST /api/notifications/activate-device — best-effort, mirrors sendNotification's fire-and-forget shape. */

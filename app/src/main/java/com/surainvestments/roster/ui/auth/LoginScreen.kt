@@ -1,5 +1,6 @@
 package com.surainvestments.roster.ui.auth
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Login
+import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.MailOutline
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +30,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,6 +43,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.surainvestments.roster.R
 import com.surainvestments.roster.ui.components.Banner
@@ -52,11 +56,31 @@ import com.surainvestments.roster.ui.components.RosterTextField
 import com.surainvestments.roster.ui.theme.BrandIndigoDeep
 import com.surainvestments.roster.ui.theme.BrandIndigoStrong
 import com.surainvestments.roster.ui.theme.ContentMaxWidth
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(viewModel: AuthViewModel = hiltViewModel(), modifier: Modifier = Modifier) {
     val uiState by viewModel.uiState.collectAsState()
     var showForgotPassword by remember { mutableStateOf(false) }
+    val activity = LocalActivity.current as FragmentActivity
+    val scope = rememberCoroutineScope()
+    // Neither of these can change while this screen is visible (disabling quick-login requires
+    // being signed in, which this screen by definition isn't) — a one-time check is correct, not
+    // a stale snapshot.
+    val quickLoginEmail = remember { viewModel.quickLoginEmailHint() }
+    val quickLoginAvailable = remember { viewModel.quickLoginAvailable() && isStrongBiometricSupported(activity) }
+
+    fun startQuickLogin() {
+        val cipher = viewModel.quickLoginDecryptCipher() ?: return
+        scope.launch {
+            val authorizedCipher = activity.authenticateWithCryptoObject(
+                title = "Sign in",
+                subtitle = quickLoginEmail?.let { "Confirm it's you to sign in as $it" } ?: "Confirm it's you to sign in",
+                cipher = cipher,
+            )
+            if (authorizedCipher != null) viewModel.quickLogin(authorizedCipher)
+        }
+    }
 
     Box(
         modifier = modifier
@@ -125,6 +149,21 @@ fun LoginScreen(viewModel: AuthViewModel = hiltViewModel(), modifier: Modifier =
 
                 (uiState.forcedSignOutMessage ?: uiState.errorMessage)?.let { message ->
                     Banner(kind = BannerKind.Error, title = message)
+                }
+
+                if (quickLoginAvailable) {
+                    PrimaryButton(
+                        text = "Sign in with biometrics",
+                        onClick = ::startQuickLogin,
+                        enabled = !uiState.isWorking,
+                        loading = uiState.isWorking,
+                        leadingIcon = if (uiState.isWorking) null else Icons.Outlined.Fingerprint,
+                    )
+                    Text(
+                        text = "or sign in with your password",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
 
                 RosterCard(contentPadding = 18.dp) {

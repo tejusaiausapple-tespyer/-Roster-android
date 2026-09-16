@@ -20,36 +20,42 @@
 ## 1. Current status snapshot (honest baseline, not aspirational)
 
 Read directly off the source tree, not from memory of what was intended. ✅ done · 🟡 partial ·
-❌ not started.
+❌ not started. **Last verified 2026-07-28** — the previous version of this table (last honest as
+of roughly 2026-07-24) was found stale by a full source-tree re-audit and is superseded by this
+one; if picking this plan up again after a gap, re-verify before trusting either.
 
 | Area | Status | Notes |
 |---|---|---|
 | Gradle/Hilt/Compose M3 foundation | ✅ | Role-agnostic, reusable as-is |
-| Firebase SDK wiring (Auth/Firestore/Storage/Crashlytics/unlimited cache) | ✅ | `FirebaseModule.kt` |
-| Worker API client + all endpoints incl. `saveAvailability`, `sendNotification` | ✅ | `WorkerApiService.kt` — built, none yet *called* from a staff screen |
+| Firebase SDK wiring (Auth/Firestore/Storage/Crashlytics/Performance/unlimited cache) | ✅ | `FirebaseModule.kt` — Performance Monitoring wired 2026-07-28 (the module's doc comment had claimed it since Phase 3, but the dependency was never actually added until now) |
+| Worker API client + all endpoints incl. `saveAvailability`, `sendNotification`, `activate-device` | ✅ | `WorkerApiService.kt` — now actually called from staff screens (availability save, single-active-device claim on login) |
 | Login, forced password change, forgot password, device-auth gate | ✅ | `AuthViewModel`, `LoginScreen`, `ChangePasswordScreen`, `DeviceAuthGateScreen` |
-| Biometric **quick-login credential store** (layer 2 — skip re-typing password) | ❌ | Only the app-lock gate (layer 1) exists |
-| Staff data models (`Shift`, `Timesheet`, `ShiftAttendance`, `RosterTask`, `TaskCompletion`, `DailyJob`) | 🟡 | Models + tolerant parsing exist; repositories are minimal single-query stubs, not the full listener-window pattern |
-| `Payslip` model/repository | ❌ | Does not exist yet |
-| `ClockSession` (local live-timer state) | ❌ | Does not exist yet |
-| Staff Home tab | 🟡 | Greeting, today/upcoming shift cards. No clock-in card, no stat grid, no bell/badge |
-| Staff Roster tab | 🟡 | Day-grouped shift list with status. No week selector, no swipe actions, no Submit Hours/Report Absence sheets, no History screen |
-| Clock-in/out, GPS/geofence | ❌ | Not started |
-| Tasks tab | ❌ | Data models exist, zero UI |
-| Availability tab | ❌ | Worker endpoint exists, zero UI |
-| Daily Jobs (Home bell panel) | ❌ | Not started |
-| Payslips | ❌ | Not started |
-| Account tab | 🟡 | Profile, appearance, security placeholder, about, delete-account, sign-out exist. No calendar integration, no notification settings, no biometric quick-login toggle |
-| Calendar integration | ❌ | Not started |
-| Local notifications (shift reminders) | ❌ | Not started |
-| Push notifications (FCM) | ❌ | Not started |
-| Haptics vocabulary | ❌ | Not started |
-| Shimmer/skeleton loading states | ❌ | Placeholder screens exist; no skeleton components |
-| Automated tests | ❌ | One test file (`AppRouteTest`) |
+| Biometric **quick-login credential store** (layer 2 — skip re-typing password) | ✅ | `QuickLoginCredentialStore.kt` — AES-256-GCM Keystore key requiring a live Class-3 biometric per use (`setUserAuthenticationParameters`/legacy `-1` fallback), enable gated behind a real Firebase password re-verification (Account → Security), auto-clears on password change, 7-day manual-login staleness rule enforced in the store itself |
+| Staff data models (`Shift`, `Timesheet`, `ShiftAttendance`, `RosterTask`, `TaskCompletion`, `DailyJob`) | 🟡 | Full listener-window pattern with O(1) index maps now in place for `Shift`; `Timesheet` uses a 5-year cutoff rather than the −28/+56 window (deliberate, needed for all-time `HoursMetrics`); `ShiftAttendance` query is still unbounded (no date window at all) — worth a look, not blocking |
+| `Payslip` model/repository | ✅ | Cache-first month-scoped (session → Firestore cache → server), matches iOS |
+| `ClockSession` (local live-timer state) | ✅ | Migrated to Jetpack Preferences DataStore 2026-07-28 (`ClockSessionStore.kt`), matching the spec exactly. Non-trivial migration, not just a rename: `SubmitHoursViewModel`'s payroll pre-fill reads the session's `StateFlow.value` *synchronously*, so `ClockSessionRepository` now eagerly loads off `AuthRepository.authStateFlow()` at construction time rather than lazily on first read, to avoid a real race against DataStore's inherently-suspend reads |
+| Staff Home tab | ✅ | Clock-in card, Approved Hours stat grid, bell+badge (Daily Jobs count, capped "9"), Add to Calendar |
+| Staff Roster tab | ✅ | Week selector (now including the locked-week dimming, wired 2026-07-28), Submit Hours/Report Absence sheets, History screen. Submit/Absence/Undo are now genuine swipe-to-reveal actions (`ui/components/SwipeToReveal.kt`, added 2026-07-28) rather than always-visible tap chips, matching the original spec; Add to Calendar moved to a persistent small icon in the row header since it was never part of the swipe-actions set on iOS either |
+| Clock-in/out, GPS/geofence | ✅ | `FusedLocationProviderClient`, enforced-vs-lenient policy split, device/server clock-skew capture, `ServerClock` |
+| Tasks tab | ✅ | Camera-only capture now via an in-app CameraX preview + shutter (`CameraCaptureScreen.kt`, added 2026-07-28) instead of the system Camera app intent, matching the original spec. 2MB/1600px compression, retention sweep unchanged |
+| Availability tab | ✅ | 7-day grid, −2…+12 weeks, locked-week banner, saves via the Worker (never a direct Firestore write) |
+| Daily Jobs (Home bell panel) | ✅ | Complete/undo, minimal-diff writes |
+| Payslips | ✅ | Cache-first, in-app PDF view + share + **print** (added 2026-07-28) |
+| Account tab | ✅ | Profile (incl. local-only photo, added 2026-07-28), appearance, biometric app-lock + quick-login toggles, per-channel notification settings (reworked 2026-07-28 — deep-links into each channel's own system settings rather than a fake in-app toggle, since Android reserves channel importance to the user post-creation), About/version history (manager-only, tap-through — staff see the version number but no navigation, matching iOS's `AccountView` vs `ManagerAccountView` exactly), delete-account, sign-out |
+| Calendar integration | ✅ | `CalendarContract` write + `.ics` share fallback |
+| Local notifications (shift reminders) | ✅ | `AlarmManager.setExactAndAllowWhileIdle`, full slot table, idempotent re-sync |
+| Push notifications (FCM) | ✅ | Token schema/lifecycle correct, single-active-device gate implemented and wired to the Worker's `/api/notifications/activate-device`. A duplicate-notification bug (push + local-listener alert both firing for `roster-published`/`timesheet-approved`/`-rejected`) was found and fixed 2026-07-28 for the single-shift case; a **bulk**-publish/bulk-approve case still double-fires (1 push vs. N local alerts — a count mismatch, not an ID mismatch) and needs a Worker-side change to fully close |
+| Haptics vocabulary | ✅ | `Haptics`/`HapticEvent` (tab change, sign-in/out, save/submit success/error) wired at tab change, sign-out, quick-login enable, availability save, submit-hours, report-absence. Deliberately *not* wired into notification delivery — every channel already has its own OS vibration, and Android ignores a per-notification override on a default-or-higher-importance channel, so it would just double-buzz |
+| Shimmer/skeleton loading states | ✅ | `ScreenLoadingSkeleton`/`SkeletonBox` (`ui/components/Shimmer.kt`) replacing plain spinners on Home/Roster/Tasks/Availability/History/Payslips |
+| Offline indicator | ✅ | `NetworkMonitor` (validated-internet `ConnectivityManager` check, not just "a radio is on") + an app-wide banner mounted once in `RosterNavHost`. The airplane-mode *test matrix* itself (manually exercising every write path offline) is still an open manual-QA item, not a code gap |
+| Automated tests | 🟡 | Unit tests solid (10+ files covering business rules, DST edge cases, payroll, notification routing). First-ever instrumented tests added 2026-07-28 (`app/src/androidTest`, 3 files) — component-level only (`WeekSelector`, buttons, settings rows), compiled and packaged into a real test APK but **never executed** (no device/emulator was available to run them). No Hilt-wired screen-flow instrumented tests (login, tab nav) yet — deferred rather than shipped unverified. No device-matrix manual QA, no real beta-tester walkthrough, no Crashlytics-verified crash on a shipped build |
 
 This is the honest starting line for every phase below — several "Phase 4/Auth" and "Phase 3/
 Backend" items from the original plan are further along than the phase numbers below might
-suggest, because that foundation work was role-agnostic and already done.
+suggest, because that foundation work was role-agnostic and already done. As of 2026-07-28, every
+row above the "Automated tests" row is functionally complete for the staff role — what's left is
+concentrated in Phase M's verification work (§7) plus the bulk-notification count mismatch called
+out above (`Push notifications (FCM)` row), not new features.
 
 ---
 

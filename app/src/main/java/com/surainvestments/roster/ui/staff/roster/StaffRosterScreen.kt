@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -42,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.surainvestments.roster.domain.model.BusinessRules
@@ -52,10 +55,12 @@ import com.surainvestments.roster.domain.model.Timesheet
 import com.surainvestments.roster.ui.components.EmptyState
 import com.surainvestments.roster.ui.components.MiniStat
 import com.surainvestments.roster.ui.components.RosterCard
+import com.surainvestments.roster.ui.components.ScreenLoadingSkeleton
 import com.surainvestments.roster.ui.components.ScreenPillTopBar
 import com.surainvestments.roster.ui.components.ScreenPillTopBarHeight
 import com.surainvestments.roster.ui.components.SectionHeader
 import com.surainvestments.roster.ui.components.SoftTag
+import com.surainvestments.roster.ui.components.SwipeToRevealActions
 import com.surainvestments.roster.ui.components.TopEdgeFade
 import com.surainvestments.roster.ui.components.WeekSelector
 import com.surainvestments.roster.ui.navigation.LocalNavBarPadding
@@ -123,12 +128,7 @@ fun StaffRosterScreen(
             .background(MaterialTheme.colorScheme.background),
     ) {
         when {
-            state.isLoading -> Box(
-                modifier = Modifier.fillMaxSize().padding(top = ScreenPillTopBarHeight),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(color = BrandIndigoStrong)
-            }
+            state.isLoading -> ScreenLoadingSkeleton(modifier = Modifier.fillMaxSize())
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -247,6 +247,7 @@ private fun RosterHeader(
                     mondayKey = state.mondayKey,
                     selectedKey = state.selectedDayKey,
                     markedKeys = state.markedKeys,
+                    lockedKeys = state.lockedKeys,
                     canGoPrev = state.canGoPrevWeek,
                     canGoNext = state.canGoNextWeek,
                     onPrev = onPrev,
@@ -337,76 +338,102 @@ private fun ShiftRowWithActions(
     val canSubmit = BusinessRules.canSubmitHours(shift.shift, shift.timesheet)
     val canAbsence = BusinessRules.canReportAbsence(shift.shift, shift.timesheet)
     val canUndo = shift.timesheet?.isStaffReportedAbsence ?: false
+    val hasSwipeActions = canSubmit || canAbsence || canUndo
 
-    Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .background(tint, shape = CircleShape),
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = shift.timeRange,
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                )
-                val subtitle = listOfNotNull(
-                    shift.department?.takeIf { it.isNotBlank() },
-                    shift.location?.takeIf { it.isNotBlank() },
-                ).joinToString(" • ")
-                if (subtitle.isNotEmpty()) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                        Icon(
-                            imageVector = Icons.Outlined.Place,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(12.dp),
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+    val header = @Composable {
+        ShiftRowHeader(shift = shift, tint = tint, onAddToCalendar = onAddToCalendar)
+    }
+
+    if (hasSwipeActions) {
+        SwipeToRevealActions(
+            actions = {
+                if (canSubmit) {
+                    RevealActionButton(
+                        text = if (shift.timesheet?.status?.rawValue == "rejected") "Resubmit" else if (shift.timesheet != null) "Edit" else "Submit",
+                        tint = BrandIndigoStrong,
+                        onClick = onSubmit,
+                    )
                 }
-            }
-            SoftTag(text = shift.status.title, tint = tint)
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (canSubmit) {
-                RowActionChip(
-                    text = if (shift.timesheet?.status?.rawValue == "rejected") "Resubmit" else if (shift.timesheet != null) "Edit" else "Submit",
-                    tint = BrandIndigoStrong,
-                    onClick = onSubmit,
-                )
-            }
-            if (canAbsence) {
-                RowActionChip(text = "Absent", tint = MaterialTheme.colorScheme.tertiary, onClick = onAbsence)
-            }
-            if (canUndo) {
-                RowActionChip(text = "Undo", tint = MaterialTheme.colorScheme.onSurfaceVariant, onClick = onUndo)
-            }
-            RowActionChip(text = "Calendar", tint = MaterialTheme.colorScheme.onSurfaceVariant, onClick = onAddToCalendar)
-        }
+                if (canAbsence) {
+                    RevealActionButton(text = "Absent", tint = MaterialTheme.colorScheme.tertiary, onClick = onAbsence)
+                }
+                if (canUndo) {
+                    RevealActionButton(text = "Undo", tint = MaterialTheme.colorScheme.onSurfaceVariant, onClick = onUndo)
+                }
+            },
+            content = header,
+        )
+    } else {
+        header()
     }
 }
 
 @Composable
-private fun RowActionChip(text: String, tint: Color, onClick: () -> Unit) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
-        color = tint,
+private fun ShiftRowHeader(shift: ShiftRowUi, tint: Color, onAddToCalendar: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .background(tint, shape = CircleShape),
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = shift.timeRange,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            )
+            val subtitle = listOfNotNull(
+                shift.department?.takeIf { it.isNotBlank() },
+                shift.location?.takeIf { it.isNotBlank() },
+            ).joinToString(" • ")
+            if (subtitle.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Icon(
+                        imageVector = Icons.Outlined.Place,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(12.dp),
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+        SoftTag(text = shift.status.title, tint = tint)
+        IconButton(onClick = onAddToCalendar, modifier = Modifier.size(28.dp)) {
+            Icon(
+                imageVector = Icons.Filled.CalendarMonth,
+                contentDescription = "Add to Calendar",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+    }
+}
+
+/** A swipe-revealed action button — filled, fixed-size, matching iOS's `.swipeActions` weight (a solid color block, not a light chip) since it's now the *only* way to reach this action, not one of several always-visible options. */
+@Composable
+private fun RevealActionButton(text: String, tint: Color, onClick: () -> Unit) {
+    Box(
         modifier = Modifier
-            .clip(MaterialTheme.shapes.extraSmall)
-            .background(tint.copy(alpha = 0.12f))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
-    )
+            .width(84.dp)
+            .height(64.dp)
+            .background(tint)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+            color = Color.White,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 4.dp),
+        )
+    }
 }

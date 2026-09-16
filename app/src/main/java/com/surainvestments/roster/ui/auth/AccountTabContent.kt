@@ -1,9 +1,16 @@
 package com.surainvestments.roster.ui.auth
 
+import android.Manifest
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
 import android.net.Uri
-import android.provider.Settings
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +32,7 @@ import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
@@ -37,12 +45,14 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Payments
 import androidx.compose.material.icons.outlined.People
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Business
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -60,13 +70,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -78,9 +93,13 @@ import com.surainvestments.roster.data.local.AppearanceMode
 import com.surainvestments.roster.domain.model.AccountDeletionStatus
 import com.surainvestments.roster.domain.model.AccountDeletionState
 import com.surainvestments.roster.domain.model.AppUser
+import com.surainvestments.roster.domain.model.RosterFormat
 import com.surainvestments.roster.domain.model.UserRole
 import com.surainvestments.roster.domain.model.UserStatus
+import com.surainvestments.roster.ui.components.HapticEvent
+import com.surainvestments.roster.ui.components.Haptics
 import com.surainvestments.roster.ui.components.MiniStatCard
+import com.surainvestments.roster.ui.components.PasswordField
 import com.surainvestments.roster.ui.navigation.LocalNavBarPadding
 import com.surainvestments.roster.ui.components.ScreenPillTopBar
 import com.surainvestments.roster.ui.components.ScreenPillTopBarHeight
@@ -91,8 +110,10 @@ import com.surainvestments.roster.ui.components.SettingsSection
 import com.surainvestments.roster.ui.components.SettingsToggleRow
 import com.surainvestments.roster.ui.components.SoftTag
 import com.surainvestments.roster.ui.manager.staff.StaffListScreen
+import com.surainvestments.roster.ui.screens.NotificationSettingsScreen
 import com.surainvestments.roster.ui.screens.PrivacyPolicyScreen
 import com.surainvestments.roster.ui.screens.TermsOfServiceScreen
+import com.surainvestments.roster.ui.screens.VersionHistoryScreen
 import com.surainvestments.roster.ui.staff.payslips.PayslipsScreen
 import com.surainvestments.roster.ui.theme.AccentEmeraldLight
 import com.surainvestments.roster.ui.theme.BrandIndigoStrong
@@ -102,7 +123,11 @@ import com.surainvestments.roster.ui.theme.ScreenPadding
 import com.surainvestments.roster.ui.theme.TextSecondaryLight
 import com.surainvestments.roster.ui.theme.TextTertiaryLight
 import com.surainvestments.roster.ui.theme.WarningAmberLight
+import java.io.File
+import java.util.UUID
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val SUPPORT_EMAIL = "support@sura-roster.com"
 
@@ -121,7 +146,9 @@ fun AccountTabContent(
     val activity = LocalActivity.current as FragmentActivity
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
     val deviceAuthEnabled by authViewModel.isDeviceAuthEnabled.collectAsState()
+    val quickLoginEnabled by authViewModel.isQuickLoginEnabled.collectAsState()
     val ownProfile by authViewModel.ownProfile.collectAsState()
     val deletionState by deletionViewModel.uiState.collectAsState()
     val isManager = ownProfile?.role == UserRole.Manager
@@ -130,9 +157,14 @@ fun AccountTabContent(
     var showSignOutConfirm by remember { mutableStateOf(false) }
     var showChangePassword by remember { mutableStateOf(false) }
     var showStaffDirectory by remember { mutableStateOf(false) }
+    var showEditProfile by remember { mutableStateOf(false) }
+    var showChangeEmail by remember { mutableStateOf(false) }
     var showTermsOfService by remember { mutableStateOf(false) }
     var showPrivacyPolicy by remember { mutableStateOf(false) }
     var showPayslips by remember { mutableStateOf(false) }
+    var showVersionHistory by remember { mutableStateOf(false) }
+    var showNotificationSettings by remember { mutableStateOf(false) }
+    var showEnableQuickLogin by remember { mutableStateOf(false) }
     var emailVerified by remember { mutableStateOf(false) }
     var comingSoonTitle by remember { mutableStateOf<String?>(null) }
 
@@ -188,6 +220,32 @@ fun AccountTabContent(
         return
     }
 
+    if (showEditProfile) {
+        EditProfileScreen(
+            onBack = { showEditProfile = false },
+            onSaved = { showEditProfile = false },
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
+    if (showVersionHistory) {
+        VersionHistoryScreen(
+            onBack = { showVersionHistory = false },
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
+    if (showNotificationSettings) {
+        NotificationSettingsScreen(
+            isManager = isManager,
+            onBack = { showNotificationSettings = false },
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -207,7 +265,7 @@ fun AccountTabContent(
         ) {
             Spacer(modifier = Modifier.height(ScreenPillTopBarHeight))
 
-            ProfileHero(user = ownProfile)
+            ProfileHero(user = ownProfile, authViewModel = authViewModel, onEditProfile = { showEditProfile = true })
 
             if (ownProfile?.emailChangeRequired == true) {
                 SettingsSection {
@@ -226,7 +284,7 @@ fun AccountTabContent(
                 }
             }
 
-            DetailsSection(user = ownProfile, emailVerified = emailVerified)
+            DetailsSection(user = ownProfile, emailVerified = emailVerified, onChangeEmail = { showChangeEmail = true })
 
             if (!isManager) {
                 StaffStatsSection()
@@ -301,32 +359,14 @@ fun AccountTabContent(
                 }
             }
 
-            SettingsSection(
-                title = "Notifications",
-                footer = if (!isManager) {
-                    "Shift start and hours reminders are scheduled on this device from your last roster sync."
-                } else {
-                    null
-                },
-            ) {
+            SettingsSection(title = "Notifications") {
                 SettingsRow(
-                    title = if (isManager) "Push notifications" else "Alerts allowed",
+                    title = "Notifications",
                     icon = Icons.Outlined.Notifications,
                     value = if (notificationsEnabled) "On" else "Off",
                     valueColor = if (notificationsEnabled) AccentEmeraldLight else TextTertiaryLight,
-                )
-                SettingsDivider()
-                SettingsRow(
-                    title = if (isManager) "Notification settings" else "System notification settings",
-                    icon = Icons.Outlined.Settings,
                     showChevron = true,
-                    onClick = {
-                        context.startActivity(
-                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = Uri.fromParts("package", context.packageName, null)
-                            },
-                        )
-                    },
+                    onClick = { showNotificationSettings = true },
                 )
             }
 
@@ -377,6 +417,21 @@ fun AccountTabContent(
                     )
                     SettingsDivider()
                 }
+                if (isStrongBiometricSupported(activity)) {
+                    SettingsToggleRow(
+                        title = "Quick Login",
+                        icon = Icons.Outlined.Bolt,
+                        checked = quickLoginEnabled,
+                        onCheckedChange = { requested ->
+                            if (!requested) {
+                                authViewModel.disableQuickLogin()
+                            } else {
+                                showEnableQuickLogin = true
+                            }
+                        },
+                    )
+                    SettingsDivider()
+                }
                 SettingsRow(
                     title = "Change password",
                     icon = Icons.Outlined.Key,
@@ -394,10 +449,15 @@ fun AccountTabContent(
                     )
                     SettingsDivider()
                 }
+                // Matches iOS exactly: staff's AccountView renders this as a plain, non-navigable
+                // row; manager's ManagerAccountView wraps the identical row in a NavigationLink to
+                // AppVersionHistoryView. Same row, tap-through gated by role — not two variants.
                 SettingsRow(
                     title = "Version",
                     icon = Icons.Outlined.Info,
                     value = BuildConfig.VERSION_NAME,
+                    showChevron = isManager,
+                    onClick = if (isManager) ({ showVersionHistory = true }) else null,
                 )
                 SettingsDivider()
                 SettingsRow(
@@ -463,6 +523,15 @@ fun AccountTabContent(
         )
     }
 
+    if (showEnableQuickLogin) {
+        EnableQuickLoginDialog(
+            authViewModel = authViewModel,
+            activity = activity,
+            scope = scope,
+            onDismiss = { showEnableQuickLogin = false },
+        )
+    }
+
     if (showSignOutConfirm) {
         AlertDialog(
             onDismissRequest = { showSignOutConfirm = false },
@@ -479,6 +548,7 @@ fun AccountTabContent(
             confirmButton = {
                 TextButton(onClick = {
                     showSignOutConfirm = false
+                    Haptics.perform(haptics, HapticEvent.SignOut)
                     authViewModel.logout()
                 }) { Text("Sign out", color = MaterialTheme.colorScheme.error) }
             },
@@ -544,10 +614,80 @@ fun AccountTabContent(
             }
         }
     }
+
+    if (showChangeEmail) {
+        Dialog(
+            onDismissRequest = { showChangeEmail = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    TextButton(onClick = { showChangeEmail = false }) {
+                        Text("Close")
+                    }
+                    ChangeEmailScreen(modifier = Modifier.fillMaxSize())
+                }
+            }
+        }
+    }
 }
 
 @Composable
-private fun ProfileHero(user: AppUser?) {
+private fun ProfileHero(user: AppUser?, authViewModel: AuthViewModel, onEditProfile: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val photoFile by authViewModel.profilePhotoFile.collectAsState()
+    var menuExpanded by remember { mutableStateOf(false) }
+    var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Decoded once per file change, not on every recomposition — profile photos are small
+    // (ImageCompressor's 2MB/1600px budget) so a synchronous decode here is cheap.
+    val photoBitmap = remember(photoFile) { photoFile?.let { BitmapFactory.decodeFile(it.path) } }
+
+    val takePictureLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+        val uri = pendingCaptureUri
+        pendingCaptureUri = null
+        if (success && uri != null) {
+            scope.launch {
+                val bitmap = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                }
+                bitmap?.let(authViewModel::setProfilePhoto)
+            }
+        }
+    }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) {
+            val uri = createProfilePhotoCaptureUri(context)
+            pendingCaptureUri = uri
+            takePictureLauncher.launch(uri)
+        }
+    }
+    val pickImageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val bitmap = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use(BitmapFactory::decodeStream)
+                }
+                bitmap?.let(authViewModel::setProfilePhoto)
+            }
+        }
+    }
+
+    fun openCamera() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            val uri = createProfilePhotoCaptureUri(context)
+            pendingCaptureUri = uri
+            takePictureLauncher.launch(uri)
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -555,24 +695,83 @@ private fun ProfileHero(user: AppUser?) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .size(96.dp)
-                .clip(CircleShape)
-                .background(BrandIndigoStrong.copy(alpha = 0.12f)),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(contentAlignment = Alignment.BottomEnd) {
+            Box(
+                modifier = Modifier
+                    .size(96.dp)
+                    .clip(CircleShape)
+                    .background(BrandIndigoStrong.copy(alpha = 0.12f))
+                    .clickable { menuExpanded = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                if (photoBitmap != null) {
+                    Image(
+                        bitmap = photoBitmap.asImageBitmap(),
+                        contentDescription = "Profile photo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    )
+                } else {
+                    Text(
+                        text = user?.initials ?: "?",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = BrandIndigoStrong,
+                    )
+                }
+            }
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .clickable { menuExpanded = true },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.PhotoCamera,
+                    contentDescription = "Change photo",
+                    tint = BrandIndigoStrong,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenuItem(
+                    text = { Text("Take Photo") },
+                    onClick = { menuExpanded = false; openCamera() },
+                )
+                DropdownMenuItem(
+                    text = { Text("Choose from Gallery") },
+                    onClick = {
+                        menuExpanded = false
+                        pickImageLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    },
+                )
+                if (photoFile != null) {
+                    DropdownMenuItem(
+                        text = { Text("Remove Photo") },
+                        onClick = {
+                            menuExpanded = false
+                            authViewModel.removeProfilePhoto()
+                        },
+                    )
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = user?.initials ?: "?",
-                style = MaterialTheme.typography.headlineMedium,
-                color = BrandIndigoStrong,
+                text = user?.fullName?.ifBlank { "—" } ?: "—",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+            )
+            Icon(
+                imageVector = Icons.Outlined.Edit,
+                contentDescription = "Edit profile",
+                tint = BrandIndigoStrong,
+                modifier = Modifier
+                    .size(18.dp)
+                    .clickable(onClick = onEditProfile),
             )
         }
-        Text(
-            text = user?.fullName?.ifBlank { "—" } ?: "—",
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-        )
         if (user != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SoftTag(
@@ -589,8 +788,92 @@ private fun ProfileHero(user: AppUser?) {
     }
 }
 
+private fun createProfilePhotoCaptureUri(context: Context): Uri {
+    val dir = File(context.cacheDir, "profile_photo_captures").apply { mkdirs() }
+    val file = File(dir, "capture_${UUID.randomUUID()}.jpg")
+    return FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+}
+
+/**
+ * Confirms the account's real password (via Firebase reauthenticate, never accepted on faith)
+ * before the biometric-gated Keystore encrypt step that actually seeds the quick-login store —
+ * two independent checks, matching how security-sensitive this credential is.
+ */
 @Composable
-private fun DetailsSection(user: AppUser?, emailVerified: Boolean) {
+private fun EnableQuickLoginDialog(
+    authViewModel: AuthViewModel,
+    activity: FragmentActivity,
+    scope: kotlinx.coroutines.CoroutineScope,
+    onDismiss: () -> Unit,
+) {
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var isWorking by remember { mutableStateOf(false) }
+    val haptics = LocalHapticFeedback.current
+
+    AlertDialog(
+        onDismissRequest = { if (!isWorking) onDismiss() },
+        title = { Text("Enable Quick Login") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Confirm your password once to enable biometric sign-in on this device.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                PasswordField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = "Password",
+                    enabled = !isWorking,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                error?.let {
+                    Text(text = it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = password.isNotBlank() && !isWorking,
+                onClick = {
+                    isWorking = true
+                    error = null
+                    scope.launch {
+                        if (!authViewModel.verifyPasswordForQuickLogin(password)) {
+                            Haptics.perform(haptics, HapticEvent.SaveError)
+                            error = "That password doesn't match your account."
+                            isWorking = false
+                            return@launch
+                        }
+                        val cipher = authViewModel.quickLoginEncryptCipher()
+                        val authorizedCipher = activity.authenticateWithCryptoObject(
+                            title = "Enable Quick Login",
+                            subtitle = "Confirm it's you to enable biometric sign-in",
+                            cipher = cipher,
+                        )
+                        isWorking = false
+                        if (authorizedCipher != null) {
+                            authViewModel.finishEnablingQuickLogin(password, authorizedCipher)
+                            Haptics.perform(haptics, HapticEvent.SaveSuccess)
+                            onDismiss()
+                        } else {
+                            Haptics.perform(haptics, HapticEvent.SaveError)
+                            error = "Biometric confirmation was cancelled or failed."
+                        }
+                    }
+                },
+            ) { Text(if (isWorking) "Verifying…" else "Continue") }
+        },
+        dismissButton = {
+            TextButton(enabled = !isWorking, onClick = onDismiss) { Text("Cancel") }
+        },
+        shape = MaterialTheme.shapes.large,
+    )
+}
+
+@Composable
+private fun DetailsSection(user: AppUser?, emailVerified: Boolean, onChangeEmail: () -> Unit) {
     SettingsSection {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
@@ -621,7 +904,7 @@ private fun DetailsSection(user: AppUser?, emailVerified: Boolean) {
                     tint = BrandIndigoStrong,
                     modifier = Modifier
                         .size(20.dp)
-                        .clickable { /* change-email sheet — Phase 8 */ },
+                        .clickable(onClick = onChangeEmail),
                 )
             }
 
@@ -649,14 +932,15 @@ private fun DetailsSection(user: AppUser?, emailVerified: Boolean) {
 }
 
 @Composable
-private fun StaffStatsSection() {
+private fun StaffStatsSection(statsViewModel: AccountStatsViewModel = hiltViewModel()) {
+    val stats by statsViewModel.uiState.collectAsState()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        MiniStatCard(value = "—", label = "Approved hrs", modifier = Modifier.weight(1f))
-        MiniStatCard(value = "0", label = "Timesheets", modifier = Modifier.weight(1f))
-        MiniStatCard(value = "0", label = "Pending", modifier = Modifier.weight(1f))
+        MiniStatCard(value = RosterFormat.decimalHours(stats.approvedHours), label = "Approved hrs", modifier = Modifier.weight(1f))
+        MiniStatCard(value = stats.timesheetCount.toString(), label = "Timesheets", modifier = Modifier.weight(1f))
+        MiniStatCard(value = stats.pendingCount.toString(), label = "Pending", modifier = Modifier.weight(1f))
     }
 }
 

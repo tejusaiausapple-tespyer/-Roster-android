@@ -1,6 +1,7 @@
 package com.surainvestments.roster.domain.model
 
 import java.time.Instant
+import java.util.Locale
 
 /** `daily_job_templates/{id}` — the permanent job library. Mirrors iOS `DailyJobTemplate`. */
 data class DailyJobTemplate(
@@ -38,6 +39,9 @@ data class DailyJobAssignment(
     val completed: Boolean,
     val completedAt: Instant?,
     val completedBy: String?,
+    /** Manager-arranged position within the shift (iOS `DailyJobAssignment.order`).
+     *  Null on assignments written before this field existed; those sort last. */
+    val order: Int? = null,
 ) {
     companion object {
         fun docId(shiftId: String, templateId: String): String = "${shiftId}_$templateId"
@@ -55,9 +59,17 @@ data class DailyJobAssignment(
                 completed = data.fsBoolean("completed"),
                 completedAt = data.fsInstant("completedAt"),
                 completedBy = data.fsString("completedBy"),
+                order = data.fsIntOrNull("order"),
             )
     }
 }
+
+/** Manager-arranged order first (nulls last), alphabetical fallback — mirrors iOS
+ *  `RosterRepository.sortedByOrder`. Staff work through jobs in this exact order. */
+val dailyJobOrderComparator: Comparator<DailyJobAssignment> =
+    compareBy<DailyJobAssignment> { it.order == null }
+        .thenBy { it.order }
+        .thenBy { it.title.lowercase(Locale.ENGLISH) }
 
 /**
  * Drops assignments whose `shiftId` no longer matches any of the staff's own currently-loaded

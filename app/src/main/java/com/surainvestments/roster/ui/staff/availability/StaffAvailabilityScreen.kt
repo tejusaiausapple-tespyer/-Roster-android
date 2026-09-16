@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -47,9 +49,12 @@ import com.surainvestments.roster.domain.model.RosterFormat
 import com.surainvestments.roster.domain.model.Weekday
 import com.surainvestments.roster.ui.components.Banner
 import com.surainvestments.roster.ui.components.BannerKind
+import com.surainvestments.roster.ui.components.HapticEvent
+import com.surainvestments.roster.ui.components.Haptics
 import com.surainvestments.roster.ui.components.PrimaryButton
 import com.surainvestments.roster.ui.components.RosterCard
 import com.surainvestments.roster.ui.components.RosterSwitch
+import com.surainvestments.roster.ui.components.ScreenLoadingSkeleton
 import com.surainvestments.roster.ui.components.ScreenPillTopBar
 import com.surainvestments.roster.ui.components.ScreenPillTopBarHeight
 import com.surainvestments.roster.ui.components.SoftTag
@@ -70,14 +75,21 @@ fun StaffAvailabilityScreen(
     val isSaving by viewModel.isSaving.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val navBarPadding = LocalNavBarPadding.current
+    val haptics = LocalHapticFeedback.current
     var editingDay by remember { mutableStateOf<Weekday?>(null) }
     var showRecurringConfirm by remember { mutableStateOf(false) }
 
+    var wasSaving by remember { mutableStateOf(false) }
+    LaunchedEffect(isSaving, errorMessage) {
+        if (wasSaving && !isSaving) {
+            Haptics.perform(haptics, if (errorMessage != null) HapticEvent.SaveError else HapticEvent.SaveSuccess)
+        }
+        wasSaving = isSaving
+    }
+
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (state.isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(top = ScreenPillTopBarHeight), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = BrandIndigoStrong)
-            }
+            ScreenLoadingSkeleton(modifier = Modifier.fillMaxSize(), itemCount = 7, itemHeight = 52.dp)
         } else {
             Column(
                 modifier = Modifier

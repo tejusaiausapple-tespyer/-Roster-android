@@ -7,9 +7,9 @@ import com.surainvestments.roster.data.repository.DailyJobRepository
 import com.surainvestments.roster.data.repository.ShiftRepository
 import com.surainvestments.roster.domain.model.DailyJobAssignment
 import com.surainvestments.roster.domain.model.RosterCalendar
+import com.surainvestments.roster.domain.model.dailyJobOrderComparator
 import com.surainvestments.roster.domain.model.excludingOrphaned
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.util.Locale
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,10 +28,10 @@ data class DailyJobsUiState(
 
 /**
  * Today's Daily Job assignments for the Home bell panel — completion toggling only, no
- * template-library access (staff have zero read access to `daily_job_templates`). Sort is
- * **title-only and stable across complete/undo** (`IOS-STAFF-AUDIT.md` §8): re-sorting by title
- * every emission is safe here because title is snapshotted at assignment time and never changes,
- * so the order never shifts purely from a completion toggle — a row jumping after a tap would
+ * template-library access (staff have zero read access to `daily_job_templates`). Sort is by the
+ * manager's drag-arranged `order` (mirrors iOS `sortedByOrder`) and **stable across complete/undo**
+ * (`IOS-STAFF-AUDIT.md` §8): `order` is only ever changed by an explicit manager reorder, never by
+ * a completion toggle, so the list never shifts purely from a tap — a row jumping after a tap would
  * read as a failed tap and invite mis-taps.
  */
 @HiltViewModel
@@ -57,7 +57,7 @@ class DailyJobsViewModel @Inject constructor(
                     // deleted-then-recreated shift leaves its old assignment behind with no
                     // cascade-delete tying the two together.
                     val liveJobs = jobs.excludingOrphaned(validShiftIds = shiftsById.keys)
-                    DailyJobsUiState(isLoading = false, jobs = liveJobs.sortedBy { it.title.lowercase(Locale.ENGLISH) })
+                    DailyJobsUiState(isLoading = false, jobs = liveJobs.sortedWith(dailyJobOrderComparator))
                 }
             }
         }

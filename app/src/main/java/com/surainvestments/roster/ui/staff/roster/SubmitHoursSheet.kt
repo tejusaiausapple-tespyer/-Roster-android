@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -45,8 +46,11 @@ import com.surainvestments.roster.domain.model.RosterFormat
 import com.surainvestments.roster.domain.model.Shift
 import com.surainvestments.roster.domain.model.Timesheet
 import com.surainvestments.roster.domain.model.TimesheetStatus
+import com.surainvestments.roster.domain.model.friendlyMessage
 import com.surainvestments.roster.ui.components.Banner
 import com.surainvestments.roster.ui.components.BannerKind
+import com.surainvestments.roster.ui.components.HapticEvent
+import com.surainvestments.roster.ui.components.Haptics
 import com.surainvestments.roster.ui.components.HeroCard
 import com.surainvestments.roster.ui.components.HhmmPickerDialog
 import com.surainvestments.roster.ui.components.PrimaryButton
@@ -111,6 +115,7 @@ fun SubmitHoursSheet(
     var showStartPicker by remember { mutableStateOf(false) }
     var showEndPicker by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val haptics = LocalHapticFeedback.current
 
     val workedHours = BusinessRules.calcWorkedHours(start, end, breakMinutes)
     val scheduledDiff = workedHours - shift.scheduledHours
@@ -208,9 +213,11 @@ fun SubmitHoursSheet(
                         isWorking = true
                         try {
                             viewModel.submit(shift, existing, start, end, breakMinutes, workedHours, notes)
+                            Haptics.perform(haptics, HapticEvent.SubmitSuccess)
                             onSubmitted()
                         } catch (e: Exception) {
-                            errorMessage = e.message ?: "Something went wrong."
+                            Haptics.perform(haptics, HapticEvent.SubmitError)
+                            errorMessage = friendlyMessage(e, "Something went wrong.")
                         } finally {
                             isWorking = false
                         }

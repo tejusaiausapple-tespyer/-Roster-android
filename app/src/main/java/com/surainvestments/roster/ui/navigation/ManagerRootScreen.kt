@@ -39,8 +39,8 @@ fun ManagerRootScreen(
     val navController = rememberNavController()
     val tabs = remember { ManagerTab.entries.map { it.toBottomTab() } }
     val tabHistory = rememberTabHistory(ManagerTab.Dashboard.route)
-    val navBarClearance = DockVisualHeight + DockOuterVerticalPadding +
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 8.dp
+    val navBarClearance = BottomNavHeight +
+        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     fun switchTab(route: String) {
         navController.navigate(route) {

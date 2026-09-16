@@ -38,8 +38,12 @@ class RosterMessagingService : FirebaseMessagingService() {
         val event = data["event"]
         val title = data["title"] ?: message.notification?.title ?: FcmEventRouting.defaultTitle(event)
         val body = data["body"] ?: message.notification?.body.orEmpty()
-        val deepLink = FcmEventRouting.deepLink(event, data["shiftId"])
-        val notificationId = (data["notificationId"] ?: event ?: title).hashCode()
+        val shiftId = data["shiftId"]
+        val deepLink = FcmEventRouting.deepLink(event, shiftId)
+        // data["notificationId"] is not sent by the Worker today but is honoured if it ever is;
+        // otherwise fall back to the same canonical formula LocalAlertObserver uses, so a push and
+        // this app's own local-listener alert for the same event+shift collapse into one notification.
+        val notificationId = data["notificationId"]?.hashCode() ?: FcmEventRouting.notificationId(event, shiftId)
 
         NotificationPoster.post(this, notificationId, title, body, FcmEventRouting.channelId(event), deepLink)
     }

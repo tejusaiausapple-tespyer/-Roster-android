@@ -1,40 +1,52 @@
 package com.surainvestments.roster.data.local
 
 import android.content.Context
-import androidx.core.content.edit
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import com.surainvestments.roster.domain.model.ClockSession
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+
+private val Context.clockSessionDataStore by preferencesDataStore(name = "clock_session")
 
 /**
  * Local-only persistence for the active [ClockSession] — mirrors iOS's `clockSession.{uid}`
  * UserDefaults key exactly (see [ClockSession]'s own doc for why this is never Firestore).
  * One active session per uid; starting a new clock-in overwrites any previous one for that uid.
+ *
+ * DataStore-backed (not SharedPreferences) — reads/writes are necessarily suspend functions, so
+ * callers must not assume a synchronous round-trip. [com.surainvestments.roster.data.repository.ClockSessionRepository]
+ * is the only caller, and loads eagerly off auth state rather than lazily on first read, precisely
+ * so a synchronous `StateFlow.value` read elsewhere (`SubmitHoursViewModel`'s payroll pre-fill)
+ * never races an unresolved load.
  */
 @Singleton
-class ClockSessionStore @Inject constructor(@ApplicationContext context: Context) {
-    private val prefs = context.getSharedPreferences("clock_session", Context.MODE_PRIVATE)
+class ClockSessionStore @Inject constructor(@ApplicationContext private val context: Context) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    fun get(uid: String): ClockSession? {
-        val raw = prefs.getString(key(uid), null) ?: return null
+    suspend fun get(uid: String): ClockSession? {
+        val raw = context.clockSessionDataStore.data.first()[key(uid)] ?: return null
         return runCatching { json.decodeFromString<Dto>(raw).toDomain() }.getOrNull()
     }
 
-    fun save(session: ClockSession) {
-        prefs.edit { putString(key(session.staffId), json.encodeToString(Dto.fromDomain(session))) }
+    suspend fun save(session: ClockSession) {
+        context.clockSessionDataStore.edit { prefs ->
+            prefs[key(session.staffId)] = json.encodeToString(Dto.fromDomain(session))
+        }
     }
 
-    fun clear(uid: String) {
-        prefs.edit { remove(key(uid)) }
+    suspend fun clear(uid: String) {
+        context.clockSessionDataStore.edit { prefs -> prefs.remove(key(uid)) }
     }
 
-    private fun key(uid: String) = "clock_session_$uid"
+    private fun key(uid: String) = stringPreferencesKey("clock_session_$uid")
 
     @Serializable
     private data class Dto(

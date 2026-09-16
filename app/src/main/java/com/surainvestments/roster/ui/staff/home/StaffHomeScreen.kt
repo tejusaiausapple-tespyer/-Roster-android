@@ -49,6 +49,7 @@ import com.surainvestments.roster.domain.model.StaffShiftDisplayStatus
 import com.surainvestments.roster.domain.model.Timesheet
 import com.surainvestments.roster.ui.components.HeroCard
 import com.surainvestments.roster.ui.components.RosterCard
+import com.surainvestments.roster.ui.components.ScreenLoadingSkeleton
 import com.surainvestments.roster.ui.components.SectionHeader
 import com.surainvestments.roster.ui.components.SoftTag
 import com.surainvestments.roster.ui.components.StatTile
@@ -89,11 +90,8 @@ fun StaffHomeScreen(
     }
 
     if (state.isLoading) {
-        Box(
-            modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator(color = BrandIndigoStrong)
+        Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            ScreenLoadingSkeleton()
         }
         return
     }

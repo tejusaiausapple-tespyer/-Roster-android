@@ -5,11 +5,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.surainvestments.roster.data.di.ApplicationScope
+import com.surainvestments.roster.data.local.QuickLoginCredentialStore
 import com.surainvestments.roster.data.remote.EmptyRequestBody
 import com.surainvestments.roster.data.remote.WorkerApiService
 import com.surainvestments.roster.domain.model.AppUser
 import com.surainvestments.roster.domain.model.AuthError
 import com.surainvestments.roster.domain.model.UserStatus
+import com.surainvestments.roster.domain.model.friendlyMessage
+import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -31,6 +34,7 @@ class AuthRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
     private val workerApi: WorkerApiService,
     private val notificationTokenRepository: NotificationTokenRepository,
+    private val quickLoginCredentialStore: QuickLoginCredentialStore,
     @ApplicationScope private val appScope: CoroutineScope,
 ) {
 
@@ -105,6 +109,39 @@ class AuthRepository @Inject constructor(
     }
 
     /**
+     * Staff self-service profile update — writes only the fields the deployed rules'
+     * `isValidSelfUserUpdate` allow-list permits (`Roster PWA/firestore.rules`:
+     * `fullName, phone, dob, address, emergencyContact, theme, profileUpdateRequired, updatedAt,
+     * lastLoginAt, email, emailChangeRequired`). Any other key in the same `update()` call would
+     * fail the rules' `hasOnly(allowedKeys)` check and reject the whole write.
+     *
+     * `emergencyContact` is a single free-text field ("Name & phone", matching the PWA's own
+     * `EditStaffModal`/`AddStaffModal` shape) — not the separate `emergencyContactName/Phone/
+     * Address/Email` keys [AppUser] also reads for backward compatibility; those aren't part of
+     * the real deployed schema and would never round-trip through this allow-list.
+     */
+    suspend fun updateProfile(
+        uid: String,
+        fullName: String,
+        phone: String,
+        dob: String,
+        address: String,
+        emergencyContact: String,
+        clearProfileUpdateRequired: Boolean,
+    ) {
+        val fields = mutableMapOf<String, Any>(
+            "fullName" to fullName.trim(),
+            "phone" to phone.trim(),
+            "dob" to dob.trim(),
+            "address" to address.trim(),
+            "emergencyContact" to emergencyContact.trim(),
+            "updatedAt" to Instant.now().toString(),
+        )
+        if (clearProfileUpdateRequired) fields["profileUpdateRequired"] = false
+        firestore.collection("users").document(uid).update(fields).await()
+    }
+
+    /**
      * Re-authenticate with the current password, then set the new one —
      * mirrors iOS's `AuthService.changePassword`. If [wasForced] (the profile
      * had `mustChangePassword == true`), also clears that flag server-side via
@@ -127,6 +164,75 @@ class AuthRepository @Inject constructor(
         if (wasForced) {
             runCatching { workerApi.completePasswordChange(EmptyRequestBody) }
         }
+
+        // The stored quick-login credential (if any) now holds a password that no longer works —
+        // clear it rather than leave a foot-gun that fails confusingly on the next quick-login
+        // attempt. The user can re-enable it from Account → Security with the new password.
+        quickLoginCredentialStore.clear()
+    }
+
+    /**
+     * Re-authenticate with the current password, then request the email change via Firebase
+     * Auth's own **verified** flow (`verifyBeforeUpdateEmail`) — mirrors iOS's `ChangeEmailView`
+     * / `AuthService.changeEmail`. Deliberately does **not** use the older `updateEmail`, which
+     * changes the credential immediately with no confirmation step: `verifyBeforeUpdateEmail`
+     * sends a link to the *new* address and leaves the current, already-verified email fully
+     * functional until the staff member clicks it — so a wrong/mistyped/inaccessible new address
+     * can never lock anyone out, it just leaves the request unconfirmed.
+     *
+     * Firestore's `users/{uid}.email` is a **display copy only** (`Roster PWA/firestore.rules`'s
+     * `isValidSelfUserUpdate` comment) — the real credential lives in Firebase Auth and only
+     * actually changes once the staff member confirms the link, at some later, unpredictable
+     * time (possibly a different session entirely). That reconciliation happens in
+     * [syncEmailIfChanged], not here.
+     */
+    suspend fun changeEmail(currentPassword: String, newEmail: String) {
+        val user = firebaseAuth.currentUser ?: throw AuthError.NotAuthenticated
+        val currentEmail = user.email ?: throw AuthError.NotAuthenticated
+        try {
+            val credential = EmailAuthProvider.getCredential(currentEmail, currentPassword)
+            user.reauthenticate(credential).await()
+            user.verifyBeforeUpdateEmail(newEmail.trim()).await()
+        } catch (e: Exception) {
+            throw mapAuthException(e)
+        }
+    }
+
+    /**
+     * Best-effort reconciliation for [changeEmail]'s deferred confirmation: if Firebase Auth's
+     * own (verified) email no longer matches what's stored on the profile doc, the staff member
+     * must have clicked the confirmation link since the doc was last written — sync the display
+     * copy so the rest of the app (which reads the Firestore doc, not `FirebaseAuth` directly)
+     * shows the current address. Called opportunistically on profile changes; never throws —
+     * a missed sync just means the display copy stays one login behind, not a functional problem
+     * since Firebase Auth itself is always the real credential either way.
+     */
+    suspend fun syncEmailIfChanged(uid: String, storedEmail: String) {
+        val user = firebaseAuth.currentUser ?: return
+        val authEmail = user.email ?: return
+        if (!user.isEmailVerified || authEmail == storedEmail) return
+        runCatching {
+            firestore.collection("users").document(uid)
+                .update(mapOf("email" to authEmail, "emailChangeRequired" to false, "updatedAt" to Instant.now().toString()))
+                .await()
+        }
+    }
+
+    /**
+     * Confirms [password] is actually correct for the signed-in user via Firebase's own
+     * reauthenticate call — the same mechanism [changePassword] already relies on. Used to gate
+     * enabling quick-login (the biometric credential store must only ever be seeded with a
+     * password Firebase itself just verified, never one accepted on faith from the caller).
+     */
+    suspend fun verifyPassword(password: String): Boolean {
+        val user = firebaseAuth.currentUser ?: return false
+        val email = user.email ?: return false
+        return try {
+            user.reauthenticate(EmailAuthProvider.getCredential(email, password)).await()
+            true
+        } catch (e: Exception) {
+            false
+        }
     }
 
     suspend fun sendPasswordReset(email: String) {
@@ -143,10 +249,11 @@ class AuthRepository @Inject constructor(
         return when (code) {
             "ERROR_WRONG_PASSWORD", "ERROR_INVALID_CREDENTIAL", "ERROR_USER_MISMATCH" -> AuthError.WrongPassword
             "ERROR_WEAK_PASSWORD" -> AuthError.WeakPassword
+            "ERROR_EMAIL_ALREADY_IN_USE", "ERROR_CREDENTIAL_ALREADY_IN_USE" -> AuthError.Generic("That email address is already in use.")
             "ERROR_USER_NOT_FOUND", "ERROR_INVALID_EMAIL" -> AuthError.Generic("No account found for that email.")
             "ERROR_NETWORK_REQUEST_FAILED" -> AuthError.Generic("Network error. Check your connection and try again.")
             "ERROR_TOO_MANY_REQUESTS" -> AuthError.Generic("Too many attempts. Please wait a moment and try again.")
-            else -> AuthError.Generic(e.message ?: "Something went wrong. Please try again.")
+            else -> AuthError.Generic(friendlyMessage(e, "Something went wrong. Please try again."))
         }
     }
 }

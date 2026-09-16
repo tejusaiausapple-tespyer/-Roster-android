@@ -87,7 +87,7 @@ class LocalAlertObserver @Inject constructor(
 
     private fun alertRosterPublished(shift: Shift) {
         post(
-            notificationId = "roster-published-${shift.id}".hashCode(),
+            notificationId = FcmEventRouting.notificationId("roster-published", shift.id),
             event = "roster-published",
             body = "A new shift was published for ${RosterFormat.dateShort(shift.date)}.",
         )
@@ -100,7 +100,7 @@ class LocalAlertObserver @Inject constructor(
         } else {
             "Your submitted hours were rejected — tap to review."
         }
-        post(notificationId = "$event-$shiftId".hashCode(), event = event, body = body, shiftId = shiftId)
+        post(notificationId = FcmEventRouting.notificationId(event, shiftId), event = event, body = body, shiftId = shiftId)
     }
 
     private fun post(notificationId: Int, event: String, body: String, shiftId: String? = null) {

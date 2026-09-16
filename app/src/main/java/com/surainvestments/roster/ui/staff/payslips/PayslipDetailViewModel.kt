@@ -30,7 +30,7 @@ data class PayslipDetailUiState(
     val isRendering: Boolean = true,
     val previewBitmap: Bitmap? = null,
     val pdfFile: File? = null,
-    val isSharing: Boolean = false,
+    val isPreparingFile: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -68,14 +68,17 @@ class PayslipDetailViewModel @Inject constructor(
         }
     }
 
-    /** Returns the already-rendered file for sharing, tracking [PayslipDetailUiState.isSharing] for a button spinner. */
-    suspend fun sharePreparedFile(action: suspend (File) -> Unit) {
+    /**
+     * Returns the already-rendered file to [action] — shared by both "Share" and "Print", tracking
+     * [PayslipDetailUiState.isPreparingFile] for whichever button triggered it.
+     */
+    suspend fun withPreparedFile(action: suspend (File) -> Unit) {
         val file = _state.value.pdfFile ?: return
-        _state.update { it.copy(isSharing = true) }
+        _state.update { it.copy(isPreparingFile = true) }
         try {
             action(file)
         } finally {
-            _state.update { it.copy(isSharing = false) }
+            _state.update { it.copy(isPreparingFile = false) }
         }
     }
 

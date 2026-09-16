@@ -16,6 +16,9 @@ internal fun Map<String, Any?>.fsDouble(key: String): Double = (this[key] as? Nu
 
 internal fun Map<String, Any?>.fsInt(key: String): Int = (this[key] as? Number)?.toInt() ?: 0
 
+/** Like [fsInt], but distinguishes "field absent" (null) from a genuine value of 0. */
+internal fun Map<String, Any?>.fsIntOrNull(key: String): Int? = (this[key] as? Number)?.toInt()
+
 internal fun Map<String, Any?>.fsBoolean(key: String): Boolean = this[key] as? Boolean ?: false
 
 internal fun Map<String, Any?>.fsInstant(key: String): java.time.Instant? =

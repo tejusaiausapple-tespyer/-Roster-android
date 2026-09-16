@@ -43,6 +43,7 @@ import com.surainvestments.roster.ui.components.Banner
 import com.surainvestments.roster.ui.components.BannerKind
 import com.surainvestments.roster.ui.components.EmptyState
 import com.surainvestments.roster.ui.components.RosterCard
+import com.surainvestments.roster.ui.components.ScreenLoadingSkeleton
 import com.surainvestments.roster.ui.components.ScreenPillTopBar
 import com.surainvestments.roster.ui.components.ScreenPillTopBarHeight
 import com.surainvestments.roster.ui.components.StatTile
@@ -76,12 +77,7 @@ fun StaffHistoryScreen(
 
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         when {
-            state.isLoading -> Box(
-                modifier = Modifier.fillMaxSize().padding(top = ScreenPillTopBarHeight),
-                contentAlignment = Alignment.Center,
-            ) {
-                CircularProgressIndicator(color = BrandIndigoStrong)
-            }
+            state.isLoading -> ScreenLoadingSkeleton(modifier = Modifier.fillMaxSize())
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(

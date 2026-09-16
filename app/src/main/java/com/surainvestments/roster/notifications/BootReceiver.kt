@@ -3,13 +3,14 @@ package com.surainvestments.roster.notifications
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.surainvestments.roster.data.local.DailyJobReminderSnapshotStore
 import com.surainvestments.roster.data.local.ReminderSnapshotStore
 
 /**
- * Re-arms surviving shift reminders after a device reboot or an app update — `AlarmManager` alarms
- * survive app-kill and Doze but are cleared by a restart. Re-arms purely from the persisted
- * snapshot (no Firestore/network), matching iOS's "pre-scheduled at sync time, no background
- * fetch" model; alarms whose instant has already passed are dropped.
+ * Re-arms surviving shift + daily-job reminders after a device reboot or an app update —
+ * `AlarmManager` alarms survive app-kill and Doze but are cleared by a restart. Re-arms purely
+ * from the persisted snapshots (no Firestore/network), matching iOS's "pre-scheduled at sync
+ * time, no background fetch" model; alarms whose instant has already passed are dropped.
  */
 class BootReceiver : BroadcastReceiver() {
 
@@ -22,6 +23,9 @@ class BootReceiver : BroadcastReceiver() {
         val armer = ReminderArmer(context)
         val now = System.currentTimeMillis()
         ReminderSnapshotStore(context).load()
+            .filter { it.fireAtEpochMs > now }
+            .forEach(armer::arm)
+        DailyJobReminderSnapshotStore(context).load()
             .filter { it.fireAtEpochMs > now }
             .forEach(armer::arm)
     }
