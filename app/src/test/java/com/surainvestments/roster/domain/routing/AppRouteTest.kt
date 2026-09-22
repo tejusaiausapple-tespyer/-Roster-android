@@ -1,7 +1,6 @@
 package com.surainvestments.roster.domain.routing
 
 import com.surainvestments.roster.domain.model.AppUser
-import com.surainvestments.roster.domain.model.UserRole
 import com.surainvestments.roster.domain.model.UserStatus
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -70,11 +69,11 @@ class AppRouteTest {
     }
 
     @Test
-    fun `manager goes to manager main`() {
-        assertEquals(AppRoute.ManagerMain, route(appUser = manager))
+    fun `manager is rejected by staff-only routing`() {
+        assertEquals(AppRoute.Login, route(appUser = manager))
     }
 
-    // ── Forced password change (both roles) ─────────────────────────────────
+    // ── Forced password change (staff only) ─────────────────────────────────
 
     @Test
     fun `staff forced password change`() {
@@ -83,11 +82,11 @@ class AppRouteTest {
     }
 
     @Test
-    fun `manager forced password change - milestone 3 fix`() {
+    fun `manager cannot reach forced password change`() {
         val u = user(role = "manager", extra = mapOf("mustChangePassword" to true))
         assertEquals(
-            "managers must not bypass the forced password change gate",
-            AppRoute.ForcedPasswordChange,
+            "manager accounts must not enter any authenticated Android surface",
+            AppRoute.Login,
             route(appUser = u),
         )
     }
@@ -106,15 +105,15 @@ class AppRouteTest {
     }
 
     @Test
-    fun `manager never gated on profile`() {
+    fun `manager cannot reach profile completion`() {
         assertEquals(
-            "needsProfileCompletion is false for managers by model",
-            AppRoute.ManagerMain,
+            "manager accounts are outside the Android product boundary",
+            AppRoute.Login,
             route(appUser = user(role = "manager")),
         )
     }
 
-    // ── Device auth gate (both roles) ────────────────────────────────────────
+    // ── Device auth gate (staff only) ────────────────────────────────────────
 
     @Test
     fun `staff device auth gate`() {
@@ -123,13 +122,13 @@ class AppRouteTest {
     }
 
     @Test
-    fun `manager device auth gate - milestone 3 fix`() {
+    fun `manager cannot reach device auth gate`() {
         assertEquals(
-            "managers must not bypass the biometric lock",
-            AppRoute.DeviceAuthGate,
+            "manager accounts must be rejected before device auth",
+            AppRoute.Login,
             route(appUser = manager, deviceAuthEnabled = true, deviceAuthVerified = false),
         )
-        assertEquals(AppRoute.ManagerMain, route(appUser = manager, deviceAuthEnabled = true, deviceAuthVerified = true))
+        assertEquals(AppRoute.Login, route(appUser = manager, deviceAuthEnabled = true, deviceAuthVerified = true))
     }
 
     // ── Gate precedence ───────────────────────────────────────────────────────

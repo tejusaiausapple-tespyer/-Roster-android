@@ -31,12 +31,13 @@ fun RosterCard(
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     accentColor: Color? = null,
+    containerColor: Color? = null,
     contentPadding: Dp = 16.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val shape = MaterialTheme.shapes.medium
     val border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    val colors = CardDefaults.cardColors(containerColor = containerColor ?: MaterialTheme.colorScheme.surface)
 
     val body: @Composable ColumnScope.() -> Unit = {
         if (accentColor != null) {

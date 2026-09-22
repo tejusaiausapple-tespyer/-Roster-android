@@ -1,7 +1,6 @@
 package com.surainvestments.roster.data.repository
 
 import com.surainvestments.roster.data.remote.AccountDeletionRequestBody
-import com.surainvestments.roster.data.remote.StaffUserIdRequest
 import com.surainvestments.roster.data.remote.WorkerApiService
 import com.surainvestments.roster.data.remote.bodyOrThrow
 import javax.inject.Inject
@@ -10,7 +9,7 @@ import javax.inject.Singleton
 /**
  * ATO-safe account deletion lifecycle — Android analogue of iOS's
  * `RosterRepository` deletion functions (Services/RosterRepository.swift).
- * All four actions are thin Worker calls; the reactive `deletion` state on
+ * The staff request is a thin Worker call; the reactive `deletion` state on
  * [com.surainvestments.roster.domain.model.AppUser] (from the live Firestore
  * listener) is what actually drives the UI, not these calls' return values.
  */
@@ -29,15 +28,4 @@ class AccountDeletionRepository @Inject constructor(
         workerApi.requestAccountDeletion(AccountDeletionRequestBody(via = "android")).bodyOrThrow()
     }
 
-    suspend fun approveStaffAccountDeletion(staffId: String) {
-        workerApi.approveAccountDeletion(StaffUserIdRequest(staffId)).bodyOrThrow()
-    }
-
-    suspend fun declineStaffAccountDeletion(staffId: String) {
-        workerApi.declineAccountDeletion(StaffUserIdRequest(staffId)).bodyOrThrow()
-    }
-
-    suspend fun cancelStaffAccountDeletion(staffId: String) {
-        workerApi.cancelAccountDeletion(StaffUserIdRequest(staffId)).bodyOrThrow()
-    }
 }

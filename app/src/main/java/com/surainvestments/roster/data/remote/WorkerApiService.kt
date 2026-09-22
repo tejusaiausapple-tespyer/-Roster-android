@@ -21,18 +21,6 @@ interface WorkerApiService {
     @GET("api/health")
     suspend fun health(): Response<HealthResponse>
 
-    @POST("api/create-auth-user")
-    suspend fun createAuthUser(@Body body: CreateAuthUserRequest): Response<CreateAuthUserResponse>
-
-    @POST("api/reset-staff-password")
-    suspend fun resetStaffPassword(@Body body: ResetStaffPasswordRequest): Response<OkResponse>
-
-    @POST("api/change-staff-email")
-    suspend fun changeStaffEmail(@Body body: ChangeStaffEmailRequest): Response<OkResponse>
-
-    @POST("api/delete-staff-users")
-    suspend fun deleteStaffUsers(@Body body: DeleteStaffUsersRequest): Response<DeleteStaffUsersResponse>
-
     @POST("api/complete-password-change")
     suspend fun completePasswordChange(@Body body: EmptyRequestBody): Response<OkResponse>
 
@@ -48,12 +36,4 @@ interface WorkerApiService {
     @POST("api/account-deletion/request")
     suspend fun requestAccountDeletion(@Body body: AccountDeletionRequestBody): Response<AccountDeletionRequestResponse>
 
-    @POST("api/account-deletion/approve")
-    suspend fun approveAccountDeletion(@Body body: StaffUserIdRequest): Response<AccountDeletionApproveResponse>
-
-    @POST("api/account-deletion/decline")
-    suspend fun declineAccountDeletion(@Body body: StaffUserIdRequest): Response<AccountDeletionStatusResponse>
-
-    @POST("api/account-deletion/cancel")
-    suspend fun cancelAccountDeletion(@Body body: StaffUserIdRequest): Response<AccountDeletionStatusResponse>
 }

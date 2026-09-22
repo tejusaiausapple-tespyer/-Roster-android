@@ -53,7 +53,7 @@ import com.surainvestments.roster.ui.theme.TextTertiaryLight
 /** Staff Payslips — pushed from Account. Mirrors iOS `PayslipsView`'s month-scoped, cache-first shape. */
 @Composable
 fun PayslipsScreen(
-    onBack: () -> Unit,
+    onBack: (() -> Unit)? = null,
     viewModel: PayslipsViewModel = hiltViewModel(),
     modifier: Modifier = Modifier,
 ) {

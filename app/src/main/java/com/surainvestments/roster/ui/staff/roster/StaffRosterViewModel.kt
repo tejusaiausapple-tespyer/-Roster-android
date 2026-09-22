@@ -73,7 +73,7 @@ data class RosterUiState(
  * Staff-facing "my shifts" — a week-at-a-time view over the -28/+56 day window
  * ([BusinessRules.shiftWindowDaysBack]/[BusinessRules.shiftWindowDaysForward]), matching iOS
  * `RosterView`. Status uses [BusinessRules.displayStatus] — the staff-facing status type,
- * distinct from the manager dashboard's `ManagerShiftStatus`.
+ * exposes the complete staff-visible lifecycle without an administrative status model.
  */
 @HiltViewModel
 class StaffRosterViewModel @Inject constructor(

@@ -9,6 +9,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -76,6 +78,35 @@ fun RosterBottomBar(
     }
 }
 
+/** Material navigation rail for medium and expanded Staff layouts. */
+@Composable
+fun RosterNavigationRail(
+    tabs: List<BottomTab>,
+    selectedRoute: String?,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val haptics = LocalHapticFeedback.current
+    NavigationRail(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
+        tabs.forEach { tab ->
+            val isSelected = selectedRoute == tab.route
+            NavigationRailItem(
+                selected = isSelected,
+                onClick = {
+                    if (!isSelected) Haptics.perform(haptics, HapticEvent.TabChange)
+                    onSelect(tab.route)
+                },
+                icon = { TabIcon(tab = tab, selected = isSelected) },
+                label = { Text(tab.label, fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal) },
+                alwaysShowLabel = false,
+            )
+        }
+    }
+}
+
 /** Icon scale is the one intentional motion touch the spec calls for — 1.0 → 1.1 over 200ms, standard easing. */
 @Composable
 private fun TabIcon(tab: BottomTab, selected: Boolean) {
@@ -103,7 +134,5 @@ data class BottomTab(
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
 )
-
-fun ManagerTab.toBottomTab() = BottomTab(route, label, selectedIcon, unselectedIcon)
 
 fun StaffTab.toBottomTab() = BottomTab(route, label, selectedIcon, unselectedIcon)

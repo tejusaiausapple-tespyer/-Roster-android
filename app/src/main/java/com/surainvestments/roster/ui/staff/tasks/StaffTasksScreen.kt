@@ -1,5 +1,6 @@
 package com.surainvestments.roster.ui.staff.tasks
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -44,6 +44,7 @@ import com.surainvestments.roster.ui.components.RosterCard
 import com.surainvestments.roster.ui.components.ScreenLoadingSkeleton
 import com.surainvestments.roster.ui.components.ScreenPillTopBar
 import com.surainvestments.roster.ui.components.ScreenPillTopBarHeight
+import com.surainvestments.roster.ui.components.TopEdgeFade
 import com.surainvestments.roster.ui.components.WeekSelector
 import com.surainvestments.roster.ui.navigation.LocalNavBarPadding
 import com.surainvestments.roster.ui.theme.BrandIndigoStrong
@@ -53,12 +54,17 @@ import com.surainvestments.roster.ui.theme.StatusColors
 /** Android analogue of iOS's staff `TasksView` — today's (or any browsable day's) applicable tasks. */
 @Composable
 fun StaffTasksScreen(
-    viewModel: StaffTasksViewModel = hiltViewModel(),
+    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    viewModel: StaffTasksViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsState()
     val navBarPadding = LocalNavBarPadding.current
     var selectedTask by remember { mutableStateOf<TaskRowUi?>(null) }
+
+    if (onBack != null) {
+        BackHandler(onBack = onBack)
+    }
 
     selectedTask?.let { row ->
         TaskCompletionDetailSheet(
@@ -108,7 +114,13 @@ fun StaffTasksScreen(
             }
         }
 
-        ScreenPillTopBar(title = "Tasks", icon = Icons.Outlined.Checklist, modifier = Modifier.align(Alignment.TopCenter))
+        TopEdgeFade(modifier = Modifier.align(Alignment.TopCenter))
+        ScreenPillTopBar(
+            title = "Tasks",
+            icon = Icons.Outlined.Checklist,
+            onBack = onBack,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 

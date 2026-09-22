@@ -59,11 +59,6 @@ fun RosterNavHost(
                     pendingDeepLink = pendingDeepLink,
                     onDeepLinkConsumed = onDeepLinkConsumed,
                 )
-                AppRoute.ManagerMain -> ManagerRootScreen(
-                    authViewModel = authViewModel,
-                    appearanceMode = appearanceMode,
-                    onAppearanceModeChange = onAppearanceModeChange,
-                )
             }
         }
 

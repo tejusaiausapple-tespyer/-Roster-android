@@ -107,7 +107,7 @@ fun StaffAvailabilityScreen(
                     WeekNav(state = state, onPrev = viewModel::onPrevWeek, onNext = viewModel::onNextWeek, onToday = viewModel::onToday)
 
                     when {
-                        state.isManagerLocked -> Banner(
+                        state.isEmployerLocked -> Banner(
                             kind = BannerKind.Info,
                             title = "Locked by your manager",
                             message = "The roster for this week has been published and locked. Contact your manager to change availability.",

@@ -3,22 +3,10 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Single-color silhouette for Android 13+ themed icons (Material You) —
-         without this, launchers with "Themed icons" enabled fall back to a
-         generic placeholder instead of the real app_logo.png artwork, since
-         a monochrome shape can't be derived from a flattened raster. Shape
-         echoes the app icon's three shift-bars + clock motif; color is
-         discarded and tinted by the system regardless of fill here. -->
+    <!-- Single-colour R silhouette for Android 13+ themed icons. The system
+         supplies the final colour from the user's wallpaper palette. -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M30,36 L74,36 A6,6 0 0 1 74,48 L36,48 A6,6 0 0 1 30,36 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,50 L74,50 A6,6 0 0 1 74,62 L36,62 A6,6 0 0 1 30,50 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M30,64 L64,64 A6,6 0 0 1 64,76 L36,76 A6,6 0 0 1 30,64 Z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M78,64 m-13,0 a13,13 0 1,0 26,0 a13,13 0 1,0 -26,0 Z" />
+        android:fillType="evenOdd"
+        android:pathData="M28,24 L64,24 C78,24 85,32 85,43 C85,54 77,61 65,61 L51,61 L80,84 L62,84 L40,64 L40,84 L28,84 Z M40,36 L40,50 L63,50 C69,50 73,47 73,43 C73,39 69,36 63,36 Z" />
 </vector>

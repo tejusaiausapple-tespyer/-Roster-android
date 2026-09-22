@@ -206,28 +206,6 @@ class BusinessRulesTest {
         assertTrue(s.isSubmittable(instant("2026-06-02", "20:01")))
     }
 
-    // ── Manager dashboard lifecycle (shared logic, still exercised here) ────
-
-    @Test
-    fun `manager shift status schedule`() {
-        val s = shift(date = shiftDay) // 09:00-17:00
-        assertEquals(ManagerShiftStatus.Scheduled, BusinessRules.managerShiftStatus(s, null, now = instant(shiftDay, "08:00")))
-        assertEquals(ManagerShiftStatus.InProgress, BusinessRules.managerShiftStatus(s, null, now = instant(shiftDay, "12:00")))
-        assertEquals(ManagerShiftStatus.PendingSubmission, BusinessRules.managerShiftStatus(s, null, now = instant(shiftDay, "17:01")))
-    }
-
-    @Test
-    fun `manager shift status timesheet wins`() {
-        val s = shift(date = shiftDay)
-        val at = instant(shiftDay, "18:00")
-        assertEquals(ManagerShiftStatus.AwaitingApproval, BusinessRules.managerShiftStatus(s, timesheet(TimesheetStatus.Pending), now = at))
-        assertEquals(ManagerShiftStatus.Approved, BusinessRules.managerShiftStatus(s, timesheet(TimesheetStatus.Approved), now = at))
-        assertEquals(ManagerShiftStatus.Rejected, BusinessRules.managerShiftStatus(s, timesheet(TimesheetStatus.Rejected), now = at))
-        assertEquals(ManagerShiftStatus.Absence, BusinessRules.managerShiftStatus(s, timesheet(TimesheetStatus.AbsentReported), now = at))
-        // A draft is not a submission — schedule decides.
-        assertEquals(ManagerShiftStatus.PendingSubmission, BusinessRules.managerShiftStatus(s, timesheet(TimesheetStatus.Draft), now = at))
-    }
-
     // ── Email & password validation ──────────────────────────────────────
 
     @Test

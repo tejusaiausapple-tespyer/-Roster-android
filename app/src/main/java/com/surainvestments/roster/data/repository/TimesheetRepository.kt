@@ -25,7 +25,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.tasks.await
 
-/** `timesheets` collection — the Android analogue of iOS `RosterRepository`'s manager timesheet listener. */
+/** Staff-owned `timesheets` access. Every read is scoped by the signed-in staff id. */
 @Singleton
 class TimesheetRepository @Inject constructor(
     private val firestore: FirebaseFirestore,
@@ -33,23 +33,6 @@ class TimesheetRepository @Inject constructor(
     @ApplicationScope private val appScope: CoroutineScope,
 ) {
     private val staffIndexCache = ConcurrentHashMap<String, StateFlow<Map<String, Timesheet>>>()
-    /**
-     * Live list of every staff member's timesheets submitted in the last 90 days —
-     * mirrors iOS's manager `managerTimesheetCutoff` rolling window (all staff, no filter).
-     */
-    fun recentTimesheets(): Flow<List<Timesheet>> = callbackFlow {
-        val cutoff = Timestamp(Date.from(Instant.now().minus(BusinessRules.managerTimesheetWindowDaysBack.toLong(), ChronoUnit.DAYS)))
-        val registration = firestore.collection("timesheets")
-            .whereGreaterThanOrEqualTo("submittedAt", cutoff)
-            .addSnapshotListener { snapshot, _ ->
-                val timesheets = snapshot?.documents?.mapNotNull { doc ->
-                    doc.data?.let { Timesheet.fromDocument(doc.id, it) }
-                } ?: emptyList()
-                trySend(timesheets)
-            }
-        awaitClose { registration.remove() }
-    }
-
     /**
      * Live list of [staffId]'s own submitted timesheets in the last [BusinessRules.staffTimesheetCutoffDays]
      * (5 years) — matches the deployed `timesheets` composite index (staffId, submittedAt)

@@ -1,5 +1,6 @@
 import com.google.firebase.appdistribution.gradle.firebaseAppDistribution
 import java.util.Properties
+import java.util.zip.ZipFile
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -156,4 +157,43 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.ui.test.junit4)
+}
+
+/**
+ * Release-boundary guard for the Staff-only Android product. This scans the compiled dex rather
+ * than trusting source folders or hidden navigation, so reintroducing an administrative class or
+ * endpoint fails CI even when it is unreachable at runtime.
+ */
+tasks.register("verifyStaffOnlyDebugArtifact") {
+    dependsOn("assembleDebug")
+    doLast {
+        val apk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
+        check(apk.isFile) { "Debug APK not found: $apk" }
+        val forbiddenMarkers = listOf(
+            "ManagerRootScreen",
+            "ManagerDashboardScreen",
+            "ManagerTab",
+            "StaffRepository",
+            "ManagerShiftStatus",
+            "api/create-auth-user",
+            "api/reset-staff-password",
+            "api/change-staff-email",
+            "api/delete-staff-users",
+            "api/account-deletion/approve",
+            "api/account-deletion/decline",
+            "api/account-deletion/cancel",
+        )
+        val matches = mutableSetOf<String>()
+        ZipFile(apk).use { zip ->
+            zip.entries().asSequence()
+                .filter { it.name.matches(Regex("classes(\\d+)?\\.dex")) }
+                .forEach { entry ->
+                    val dexText = zip.getInputStream(entry).use { input ->
+                        input.readBytes().toString(Charsets.ISO_8859_1)
+                    }
+                    forbiddenMarkers.filterTo(matches) { marker -> dexText.contains(marker) }
+                }
+        }
+        check(matches.isEmpty()) { "Manager-only code leaked into Staff APK: ${matches.sorted()}" }
+    }
 }

@@ -31,25 +31,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Assignment
 import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.EditCalendar
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Fingerprint
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.LocationOn
-import androidx.compose.material.icons.outlined.Payments
-import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PrivacyTip
 import androidx.compose.material.icons.outlined.Description
-import androidx.compose.material.icons.outlined.Business
-import androidx.compose.material.icons.outlined.WorkspacePremium
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -72,7 +66,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
@@ -94,7 +87,6 @@ import com.surainvestments.roster.domain.model.AccountDeletionStatus
 import com.surainvestments.roster.domain.model.AccountDeletionState
 import com.surainvestments.roster.domain.model.AppUser
 import com.surainvestments.roster.domain.model.RosterFormat
-import com.surainvestments.roster.domain.model.UserRole
 import com.surainvestments.roster.domain.model.UserStatus
 import com.surainvestments.roster.ui.components.HapticEvent
 import com.surainvestments.roster.ui.components.Haptics
@@ -109,12 +101,9 @@ import com.surainvestments.roster.ui.components.SettingsRow
 import com.surainvestments.roster.ui.components.SettingsSection
 import com.surainvestments.roster.ui.components.SettingsToggleRow
 import com.surainvestments.roster.ui.components.SoftTag
-import com.surainvestments.roster.ui.manager.staff.StaffListScreen
 import com.surainvestments.roster.ui.screens.NotificationSettingsScreen
 import com.surainvestments.roster.ui.screens.PrivacyPolicyScreen
 import com.surainvestments.roster.ui.screens.TermsOfServiceScreen
-import com.surainvestments.roster.ui.screens.VersionHistoryScreen
-import com.surainvestments.roster.ui.staff.payslips.PayslipsScreen
 import com.surainvestments.roster.ui.theme.AccentEmeraldLight
 import com.surainvestments.roster.ui.theme.BrandIndigoStrong
 import com.surainvestments.roster.ui.theme.ContentMaxWidth
@@ -131,9 +120,16 @@ import kotlinx.coroutines.withContext
 
 private const val SUPPORT_EMAIL = "support@sura-roster.com"
 
+private val AppearanceMode.displayName: String
+    get() = when (this) {
+        AppearanceMode.System -> "Use device setting"
+        AppearanceMode.Light -> "Light"
+        AppearanceMode.Dark -> "Dark"
+    }
+
 /**
- * Account tab — layout mirrors iOS `AccountView` / `ManagerAccountView`
- * (inset-grouped sections, profile hero, security, about, sign out).
+ * Staff account tab: profile, pay, notifications, appearance, security,
+ * legal/support, account deletion, and sign out.
  */
 @Composable
 fun AccountTabContent(
@@ -151,22 +147,17 @@ fun AccountTabContent(
     val quickLoginEnabled by authViewModel.isQuickLoginEnabled.collectAsState()
     val ownProfile by authViewModel.ownProfile.collectAsState()
     val deletionState by deletionViewModel.uiState.collectAsState()
-    val isManager = ownProfile?.role == UserRole.Manager
-
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showSignOutConfirm by remember { mutableStateOf(false) }
     var showChangePassword by remember { mutableStateOf(false) }
-    var showStaffDirectory by remember { mutableStateOf(false) }
     var showEditProfile by remember { mutableStateOf(false) }
     var showChangeEmail by remember { mutableStateOf(false) }
     var showTermsOfService by remember { mutableStateOf(false) }
     var showPrivacyPolicy by remember { mutableStateOf(false) }
-    var showPayslips by remember { mutableStateOf(false) }
-    var showVersionHistory by remember { mutableStateOf(false) }
     var showNotificationSettings by remember { mutableStateOf(false) }
+    var showAppearanceOptions by remember { mutableStateOf(false) }
     var showEnableQuickLogin by remember { mutableStateOf(false) }
     var emailVerified by remember { mutableStateOf(false) }
-    var comingSoonTitle by remember { mutableStateOf<String?>(null) }
 
     // NotificationManagerCompat.areNotificationsEnabled() reflects the real, user-visible state
     // across every API level (the POST_NOTIFICATIONS runtime permission on 33+, and the
@@ -188,14 +179,6 @@ fun AccountTabContent(
         emailVerified = FirebaseAuth.getInstance().currentUser?.isEmailVerified == true
     }
 
-    if (showStaffDirectory && isManager) {
-        StaffListScreen(
-            onBack = { showStaffDirectory = false },
-            modifier = modifier.fillMaxSize(),
-        )
-        return
-    }
-
     if (showTermsOfService) {
         TermsOfServiceScreen(
             onBack = { showTermsOfService = false },
@@ -212,14 +195,6 @@ fun AccountTabContent(
         return
     }
 
-    if (showPayslips) {
-        PayslipsScreen(
-            onBack = { showPayslips = false },
-            modifier = modifier.fillMaxSize(),
-        )
-        return
-    }
-
     if (showEditProfile) {
         EditProfileScreen(
             onBack = { showEditProfile = false },
@@ -229,17 +204,8 @@ fun AccountTabContent(
         return
     }
 
-    if (showVersionHistory) {
-        VersionHistoryScreen(
-            onBack = { showVersionHistory = false },
-            modifier = modifier.fillMaxSize(),
-        )
-        return
-    }
-
     if (showNotificationSettings) {
         NotificationSettingsScreen(
-            isManager = isManager,
             onBack = { showNotificationSettings = false },
             modifier = modifier.fillMaxSize(),
         )
@@ -286,79 +252,7 @@ fun AccountTabContent(
 
             DetailsSection(user = ownProfile, emailVerified = emailVerified, onChangeEmail = { showChangeEmail = true })
 
-            if (!isManager) {
-                StaffStatsSection()
-                SettingsSection(title = "Pay") {
-                    SettingsRow(
-                        title = "Payslips",
-                        icon = Icons.Outlined.Payments,
-                        showChevron = true,
-                        onClick = { showPayslips = true },
-                    )
-                }
-            }
-
-            if (isManager) {
-                SettingsSection(title = "Business") {
-                    SettingsRow(
-                        title = "Company details",
-                        icon = Icons.Outlined.Business,
-                        showChevron = true,
-                        onClick = { comingSoonTitle = "Company details" },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        title = "Locations",
-                        icon = Icons.Outlined.LocationOn,
-                        showChevron = true,
-                        onClick = { comingSoonTitle = "Locations" },
-                    )
-                }
-                SettingsSection(title = "Management") {
-                    SettingsRow(
-                        title = "Staff",
-                        icon = Icons.Outlined.People,
-                        showChevron = true,
-                        onClick = { showStaffDirectory = true },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        title = "Availability",
-                        icon = Icons.Outlined.EditCalendar,
-                        showChevron = true,
-                        onClick = { comingSoonTitle = "Availability" },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        title = "Reports",
-                        icon = Icons.Outlined.BarChart,
-                        showChevron = true,
-                        onClick = { comingSoonTitle = "Reports" },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        title = "Tenure & Hours",
-                        icon = Icons.Outlined.WorkspacePremium,
-                        showChevron = true,
-                        onClick = { comingSoonTitle = "Tenure & Hours" },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        title = "Wage",
-                        icon = Icons.Outlined.Payments,
-                        showChevron = true,
-                        onClick = { comingSoonTitle = "Wage" },
-                    )
-                    SettingsDivider()
-                    SettingsRow(
-                        title = "Payroll",
-                        icon = Icons.AutoMirrored.Outlined.Assignment,
-                        showChevron = true,
-                        onClick = { comingSoonTitle = "Payroll" },
-                    )
-                }
-            }
-
+            StaffStatsSection()
             SettingsSection(title = "Notifications") {
                 SettingsRow(
                     title = "Notifications",
@@ -371,20 +265,12 @@ fun AccountTabContent(
             }
 
             SettingsSection(title = "Appearance") {
-                SettingsToggleRow(
-                    title = "Dark Mode",
+                SettingsRow(
+                    title = "Theme",
                     icon = Icons.Outlined.DarkMode,
-                    checked = when (appearanceMode) {
-                        AppearanceMode.Dark -> true
-                        AppearanceMode.Light -> false
-                        AppearanceMode.System ->
-                            (LocalConfiguration.current.uiMode and
-                                android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                                android.content.res.Configuration.UI_MODE_NIGHT_YES
-                    },
-                    onCheckedChange = { enabled ->
-                        onAppearanceModeChange(if (enabled) AppearanceMode.Dark else AppearanceMode.Light)
-                    },
+                    value = appearanceMode.displayName,
+                    showChevron = true,
+                    onClick = { showAppearanceOptions = true },
                 )
             }
 
@@ -449,15 +335,10 @@ fun AccountTabContent(
                     )
                     SettingsDivider()
                 }
-                // Matches iOS exactly: staff's AccountView renders this as a plain, non-navigable
-                // row; manager's ManagerAccountView wraps the identical row in a NavigationLink to
-                // AppVersionHistoryView. Same row, tap-through gated by role — not two variants.
                 SettingsRow(
                     title = "Version",
                     icon = Icons.Outlined.Info,
                     value = BuildConfig.VERSION_NAME,
-                    showChevron = isManager,
-                    onClick = if (isManager) ({ showVersionHistory = true }) else null,
                 )
                 SettingsDivider()
                 SettingsRow(
@@ -488,18 +369,16 @@ fun AccountTabContent(
                 )
             }
 
-            if (!isManager) {
-                SettingsSection(
-                    title = "Delete account",
-                    footer = "Employer-managed accounts. After approval you are locked for 30 days (cancellable by your manager), then login is removed. Payroll/ATO records are retained.",
-                ) {
-                    DeleteAccountRows(
-                        deletion = ownProfile?.deletion,
-                        message = deletionState.errorMessage ?: deletionState.successMessage,
-                        isWorking = deletionState.isWorking,
-                        onRequestDeletion = { showDeleteConfirm = true },
-                    )
-                }
+            SettingsSection(
+                title = "Delete account",
+                footer = "Employer-managed accounts. After approval you are locked for 30 days (cancellable by your manager), then login is removed. Payroll/ATO records are retained.",
+            ) {
+                DeleteAccountRows(
+                    deletion = ownProfile?.deletion,
+                    message = deletionState.errorMessage ?: deletionState.successMessage,
+                    isWorking = deletionState.isWorking,
+                    onRequestDeletion = { showDeleteConfirm = true },
+                )
             }
 
             SettingsSection {
@@ -537,13 +416,7 @@ fun AccountTabContent(
             onDismissRequest = { showSignOutConfirm = false },
             title = { Text("Sign out?") },
             text = {
-                Text(
-                    if (isManager) {
-                        "You'll need to sign in again to access the manager dashboard."
-                    } else {
-                        "You'll need to sign in again to access your roster."
-                    },
-                )
+                Text("You'll need to sign in again to access your roster.")
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -583,14 +456,30 @@ fun AccountTabContent(
         )
     }
 
-    comingSoonTitle?.let { title ->
+    if (showAppearanceOptions) {
         AlertDialog(
-            onDismissRequest = { comingSoonTitle = null },
-            title = { Text(title) },
-            text = { Text("Coming soon — this screen will match the iOS app.") },
-            confirmButton = {
-                TextButton(onClick = { comingSoonTitle = null }) { Text("OK") }
+            onDismissRequest = { showAppearanceOptions = false },
+            title = { Text("Choose theme") },
+            text = {
+                Column {
+                    AppearanceMode.entries.forEach { mode ->
+                        TextButton(
+                            onClick = {
+                                onAppearanceModeChange(mode)
+                                showAppearanceOptions = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text = if (mode == appearanceMode) "✓  ${mode.displayName}" else mode.displayName,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Start,
+                            )
+                        }
+                    }
+                }
             },
+            confirmButton = {},
             shape = MaterialTheme.shapes.large,
         )
     }
@@ -775,7 +664,7 @@ private fun ProfileHero(user: AppUser?, authViewModel: AuthViewModel, onEditProf
         if (user != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SoftTag(
-                    text = if (user.role == UserRole.Staff) "Staff" else "Manager",
+                    text = "Staff",
                     tint = BrandIndigoStrong,
                 )
                 SoftTag(

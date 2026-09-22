@@ -39,36 +39,6 @@ data class OkResponse(val ok: Boolean = true)
 
 // ─── Auth (worker/handlers/auth.ts) ───────────────────────────────────────────
 
-@Serializable
-data class CreateAuthUserRequest(val email: String, val password: String)
-
-@Serializable
-data class CreateAuthUserResponse(val ok: Boolean, val localId: String)
-
-@Serializable
-data class ResetStaffPasswordRequest(val staffUserId: String, val temporaryPassword: String)
-
-@Serializable
-data class ChangeStaffEmailRequest(
-    val staffUserId: String,
-    val email: String,
-    val managerPassword: String,
-)
-
-@Serializable
-data class DeleteStaffUsersRequest(val staffUserIds: List<String>)
-
-@Serializable
-data class DeleteStaffUsersResponse(
-    val ok: Boolean,
-    val mode: String,
-    val scheduledCount: Int,
-    val failedCount: Int,
-    val deletedStaffCount: Int,
-    val deletedShiftCount: Int,
-    val note: String,
-)
-
 // ─── Availability (worker/handlers/availability.ts) ───────────────────────────
 
 @Serializable
@@ -149,18 +119,3 @@ data class AccountDeletionRequestBody(
 
 @Serializable
 data class AccountDeletionRequestResponse(val ok: Boolean, val staffUserId: String, val status: String)
-
-@Serializable
-data class StaffUserIdRequest(val staffUserId: String)
-
-@Serializable
-data class AccountDeletionApproveResponse(
-    val ok: Boolean,
-    val staffUserId: String,
-    val status: String,
-    val cancelDeadlineAt: String,
-    val retained: List<String> = emptyList(),
-)
-
-@Serializable
-data class AccountDeletionStatusResponse(val ok: Boolean, val staffUserId: String, val status: String)

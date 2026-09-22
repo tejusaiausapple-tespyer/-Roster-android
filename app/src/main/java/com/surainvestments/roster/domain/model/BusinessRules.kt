@@ -20,13 +20,6 @@ object BusinessRules {
     /** Oldest timesheet a staff member's own history query includes (5 years). */
     const val staffTimesheetCutoffDays = 365 * 5
 
-    /**
-     * Oldest timesheet the manager's all-staff listener loads live (recent operational window,
-     * not staff-facing — named here only because [TimesheetRepository.recentTimesheets] already
-     * used this magic number and deserved a name, not because this phase builds manager UI).
-     */
-    const val managerTimesheetWindowDaysBack = 90
-
     /** Availability may be set up to 12 weeks ahead; navigation allows 2 weeks back (locked). */
     const val availabilityMinWeekOffset = -2
     const val availabilityMaxWeekOffset = 12
@@ -60,9 +53,7 @@ object BusinessRules {
     }
 
     /**
-     * The staff-facing display status for a shift — distinct from [ManagerShiftStatus] (which
-     * collapses `absent_reported`/`absent` into one bucket and never shows `draft`/`pending`
-     * verbatim). Mirrors iOS `displayStatus`.
+     * The staff-facing display status for a shift. Mirrors iOS `displayStatus`.
      */
     fun displayStatus(shift: Shift, timesheet: Timesheet?, now: Instant = Instant.now()): StaffShiftDisplayStatus {
         if (timesheet != null) {
@@ -117,9 +108,9 @@ object BusinessRules {
     fun isWeekLockedForStaff(weekStartKey: String, now: Instant = Instant.now()): Boolean =
         weekStartKey <= RosterCalendar.weekStartKey(now)
 
-    /** Full lock decision: past/current always locked, future locked only if a manager locked that week. */
-    fun isWeekLockedForStaff(weekStartKey: String, managerLockedWeeks: Set<String>, now: Instant = Instant.now()): Boolean =
-        isWeekLockedForStaff(weekStartKey, now) || managerLockedWeeks.contains(weekStartKey)
+    /** Full lock decision: past/current always locked, future locked if the employer published it as locked. */
+    fun isWeekLockedForStaff(weekStartKey: String, employerLockedWeeks: Set<String>, now: Instant = Instant.now()): Boolean =
+        isWeekLockedForStaff(weekStartKey, now) || employerLockedWeeks.contains(weekStartKey)
 
     /** Every Monday key from [fromMondayKey] through the availability horizon ([availabilityMaxWeekOffset] weeks out). */
     fun recurringWeekKeys(fromMondayKey: String, now: Instant = Instant.now()): List<String> {
@@ -138,42 +129,4 @@ object BusinessRules {
 
     fun isValidEmail(email: String): Boolean = emailPattern.matches(email.trim())
 
-    /**
-     * Derives a shift's manager-facing lifecycle status. Exact precedence, first match wins:
-     * 1. A submitted [Timesheet] decides it outright (approved/pending→awaitingApproval/
-     *    rejected/absence), *except* `draft`, which falls through as if no timesheet existed.
-     * 2. Otherwise, verified [ShiftAttendance] takes over: an early clock-out ends "in
-     *    progress" immediately (pendingSubmission) regardless of the clock; a clock-in with
-     *    no clock-out yet, before the shift's scheduled end, is inProgress.
-     * 3. Otherwise, fall back to the plain schedule clock (scheduled / inProgress / pendingSubmission).
-     */
-    fun managerShiftStatus(
-        shift: Shift,
-        timesheet: Timesheet?,
-        attendance: ShiftAttendance? = null,
-        now: Instant = Instant.now(),
-    ): ManagerShiftStatus {
-        if (timesheet != null) {
-            when (timesheet.status) {
-                TimesheetStatus.Approved -> return ManagerShiftStatus.Approved
-                TimesheetStatus.Pending -> return ManagerShiftStatus.AwaitingApproval
-                TimesheetStatus.Rejected -> return ManagerShiftStatus.Rejected
-                TimesheetStatus.AbsentReported, TimesheetStatus.Absent -> return ManagerShiftStatus.Absence
-                TimesheetStatus.Draft -> Unit // not submitted yet — fall through
-            }
-        }
-
-        if (attendance != null) {
-            if (attendance.clockOutAt != null) return ManagerShiftStatus.PendingSubmission
-            if (attendance.clockInAt != null && now.isBefore(shift.endDateTime)) {
-                return ManagerShiftStatus.InProgress
-            }
-        }
-
-        return when {
-            now.isBefore(shift.startDateTime) -> ManagerShiftStatus.Scheduled
-            now.isBefore(shift.endDateTime) -> ManagerShiftStatus.InProgress
-            else -> ManagerShiftStatus.PendingSubmission
-        }
-    }
 }

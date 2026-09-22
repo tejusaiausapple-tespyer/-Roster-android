@@ -8,10 +8,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -40,9 +42,10 @@ import com.surainvestments.roster.data.local.AppearanceMode
 import com.surainvestments.roster.data.local.NotificationPreferences
 import com.surainvestments.roster.ui.auth.AccountTabContent
 import com.surainvestments.roster.ui.auth.AuthViewModel
-import com.surainvestments.roster.ui.screens.PlaceholderScreen
 import com.surainvestments.roster.ui.staff.availability.StaffAvailabilityScreen
+import com.surainvestments.roster.ui.staff.home.DailyJobsScreen
 import com.surainvestments.roster.ui.staff.home.StaffHomeScreen
+import com.surainvestments.roster.ui.staff.payslips.PayslipsScreen
 import com.surainvestments.roster.ui.staff.roster.StaffRosterScreen
 import com.surainvestments.roster.ui.staff.tasks.StaffTasksScreen
 
@@ -58,9 +61,6 @@ fun StaffRootScreen(
     val navController = rememberNavController()
     val tabs = remember { StaffTab.entries.map { it.toBottomTab() } }
     val tabHistory = rememberTabHistory(StaffTab.Home.route)
-    val navBarClearance = BottomNavHeight +
-        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-
     fun switchTab(route: String) {
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) {
@@ -92,11 +92,17 @@ fun StaffRootScreen(
         }
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
+        val useNavigationRail = maxWidth >= 600.dp
+        val navBarClearance = if (useNavigationRail) {
+            0.dp
+        } else {
+            BottomNavHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        }
         CompositionLocalProvider(
             LocalNavBarPadding provides PaddingValues(bottom = navBarClearance),
         ) {
@@ -105,42 +111,77 @@ fun StaffRootScreen(
                 startDestination = StaffTab.Home.route,
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(start = if (useNavigationRail) 80.dp else 0.dp)
                     .windowInsetsPadding(WindowInsets.statusBars),
             ) {
                 StaffTab.entries.forEach { tab ->
                     composable(tab.route) {
                         when (tab) {
-                            StaffTab.Home -> StaffHomeScreen(modifier = Modifier.fillMaxSize())
+                            StaffTab.Home -> StaffHomeScreen(
+                                onOpenTasks = { navController.navigate(TASKS_ROUTE) },
+                                onOpenDailyJobs = { navController.navigate(DAILY_JOBS_ROUTE) },
+                                onOpenRoster = { switchTab(StaffTab.Roster.route) },
+                                modifier = Modifier.fillMaxSize(),
+                            )
                             StaffTab.Roster -> StaffRosterScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 pendingSubmitShiftId = pendingSubmitShiftId,
                                 onPendingSubmitConsumed = { pendingSubmitShiftId = null },
                             )
-                            StaffTab.Tasks -> StaffTasksScreen(modifier = Modifier.fillMaxSize())
+                            StaffTab.Payslips -> PayslipsScreen(modifier = Modifier.fillMaxSize())
                             StaffTab.Availability -> StaffAvailabilityScreen(modifier = Modifier.fillMaxSize())
                             StaffTab.Account -> AccountTabContent(
                                 authViewModel = authViewModel,
                                 appearanceMode = appearanceMode,
                                 onAppearanceModeChange = onAppearanceModeChange,
                             )
-                            else -> PlaceholderScreen(title = tab.label, icon = tab.selectedIcon)
                         }
                     }
+                }
+                val onNavigateToHome: () -> Unit = {
+                    if (!navController.popBackStack(StaffTab.Home.route, inclusive = false)) {
+                        switchTab(StaffTab.Home.route)
+                    }
+                }
+                composable(TASKS_ROUTE) {
+                    StaffTasksScreen(
+                        onBack = onNavigateToHome,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                composable(DAILY_JOBS_ROUTE) {
+                    DailyJobsScreen(
+                        onBack = onNavigateToHome,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
 
         val backStackEntry by navController.currentBackStackEntryAsState()
-        RosterBottomBar(
-            tabs = tabs,
-            selectedRoute = backStackEntry?.destination?.route,
-            onSelect = { route ->
-                tabHistory.remove(route)
-                tabHistory.add(route)
-                switchTab(route)
-            },
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        val selectedPrimaryRoute = backStackEntry?.destination?.route.let { route ->
+            if (route == TASKS_ROUTE || route == DAILY_JOBS_ROUTE) StaffTab.Home.route else route
+        }
+        val onSelectTab: (String) -> Unit = { route ->
+            tabHistory.remove(route)
+            tabHistory.add(route)
+            switchTab(route)
+        }
+        if (useNavigationRail) {
+            RosterNavigationRail(
+                tabs = tabs,
+                selectedRoute = selectedPrimaryRoute,
+                onSelect = onSelectTab,
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
+        } else {
+            RosterBottomBar(
+                tabs = tabs,
+                selectedRoute = selectedPrimaryRoute,
+                onSelect = onSelectTab,
+                modifier = Modifier.align(Alignment.BottomCenter),
+            )
+        }
 
         BackHandler(enabled = tabHistory.size > 1) {
             tabHistory.removeAt(tabHistory.lastIndex)
@@ -148,6 +189,9 @@ fun StaffRootScreen(
         }
     }
 }
+
+private const val TASKS_ROUTE = "staff/home/tasks"
+private const val DAILY_JOBS_ROUTE = "staff/home/daily-jobs"
 
 /**
  * Requests POST_NOTIFICATIONS (API 33+) so shift reminders can be shown. Shows a one-time

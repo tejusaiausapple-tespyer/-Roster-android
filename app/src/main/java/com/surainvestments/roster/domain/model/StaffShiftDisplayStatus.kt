@@ -1,9 +1,7 @@
 package com.surainvestments.roster.domain.model
 
 /**
- * The staff-facing display status of a shift, derived by [BusinessRules.displayStatus] —
- * distinct from [ManagerShiftStatus], which collapses `absent_reported`/`absent` into one
- * "Absence" bucket and never surfaces `draft`/`pending` verbatim. Mirrors iOS
+ * The staff-facing display status of a shift, derived by [BusinessRules.displayStatus]. Mirrors iOS
  * `StaffShiftDisplayStatus` (`Models/Enums.swift`).
  */
 enum class StaffShiftDisplayStatus(val rawValue: String) {

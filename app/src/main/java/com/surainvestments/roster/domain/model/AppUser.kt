@@ -1,11 +1,7 @@
 package com.surainvestments.roster.domain.model
 
 /**
- * `users/{uid}` profile — subset needed for the auth/routing gate (Phase 4)
- * plus the fields the Phase 4 staff-management screens need for a list/detail
- * view. Mirrors iOS's `AppUser` (Models/User.swift); Phase 5 (Database Layer)
- * will extend this to the full field set (payroll, availability, etc.) that
- * the rest of the app needs.
+ * Staff-owned `users/{uid}` profile fields used by the Android product.
  */
 data class AppUser(
     val id: String,
@@ -25,8 +21,6 @@ data class AppUser(
     val startDate: String?,
     val createdAt: String?,
     val deletion: AccountDeletionState?,
-    /** Australian Tax File Number (9 digits). Manager-only; retained after Auth purge. */
-    val tfn: String?,
     val emergencyContactName: String?,
     val emergencyContactPhone: String?,
     val emergencyContactAddress: String?,
@@ -91,7 +85,6 @@ data class AppUser(
                 startDate = data["startDate"] as? String,
                 createdAt = data["createdAt"] as? String,
                 deletion = AccountDeletionState.fromMap(data["deletion"] as? Map<String, Any?>),
-                tfn = data["tfn"] as? String,
                 emergencyContactName = (data["emergencyContactName"] as? String)
                     ?.takeIf { it.isNotBlank() }
                     ?: (data["emergencyContact"] as? String),

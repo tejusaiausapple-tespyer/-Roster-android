@@ -3,8 +3,7 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Fully transparent on purpose: the real Rosterra app icon (Assets.xcassets/
-         AppIcon.appiconset on iOS) is a single flattened image, used here as the
+    <!-- Fully transparent on purpose: the approved Rosterra R icon is a single flattened image, used here as the
          adaptive icon's background layer (ic_launcher_background.png) with
          nothing drawn on top. A zero-path vector previously caused adaptive-icon
          inflation to fail on-device (PackageManager fell back to the default

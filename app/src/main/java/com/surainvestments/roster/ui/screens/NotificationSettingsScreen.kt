@@ -72,7 +72,7 @@ private val notificationChannelRows = listOf(
  * category's own system settings.
  */
 @Composable
-fun NotificationSettingsScreen(isManager: Boolean, onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun NotificationSettingsScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     var notificationsEnabled by remember { mutableStateOf(NotificationManagerCompat.from(context).areNotificationsEnabled()) }
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -103,9 +103,9 @@ fun NotificationSettingsScreen(isManager: Boolean, onBack: () -> Unit, modifier:
             ) {
                 Spacer(modifier = Modifier.height(ScreenPillTopBarHeight))
 
-                SettingsSection(title = if (isManager) "Push Notifications" else "Alerts") {
+                SettingsSection(title = "Alerts") {
                     SettingsRow(
-                        title = if (isManager) "Push notifications" else "Alerts allowed",
+                        title = "Alerts allowed",
                         icon = Icons.Outlined.Notifications,
                         value = if (notificationsEnabled) "On" else "Off",
                         valueColor = if (notificationsEnabled) AccentEmeraldLight else TextTertiaryLight,
@@ -122,11 +122,7 @@ fun NotificationSettingsScreen(isManager: Boolean, onBack: () -> Unit, modifier:
 
                 SettingsSection(
                     title = "Categories",
-                    footer = if (!isManager) {
-                        "Shift start and hours reminders are scheduled on this device from your last roster sync. Tap a category to change its sound, vibration, or importance."
-                    } else {
-                        "Tap a category to change its sound, vibration, or importance."
-                    },
+                    footer = "Shift start and hours reminders are scheduled on this device from your last roster sync. Tap a category to change its sound, vibration, or importance.",
                 ) {
                     notificationChannelRows.forEachIndexed { index, row ->
                         SettingsRow(

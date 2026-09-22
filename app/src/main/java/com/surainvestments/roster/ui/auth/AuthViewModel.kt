@@ -13,6 +13,7 @@ import com.surainvestments.roster.data.repository.AuthRepository
 import com.surainvestments.roster.domain.model.AppUser
 import com.surainvestments.roster.domain.model.AuthError
 import com.surainvestments.roster.domain.model.UserStatus
+import com.surainvestments.roster.domain.model.UserRole
 import com.surainvestments.roster.domain.routing.AppRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
@@ -197,6 +198,10 @@ class AuthViewModel @Inject constructor(
             currentUser.collect { user ->
                 val currentUid = uid.value
                 if (user != null && currentUid != null) {
+                    if (user.role != UserRole.Staff) {
+                        forceSignOut(AuthError.StaffOnly.message)
+                        return@collect
+                    }
                     when (user.status) {
                         UserStatus.Locked -> forceSignOut(AuthError.AccountLocked.message)
                         UserStatus.Inactive -> forceSignOut(AuthError.AccountInactive.message)

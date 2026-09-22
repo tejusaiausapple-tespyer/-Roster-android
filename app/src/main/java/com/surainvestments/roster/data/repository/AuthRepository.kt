@@ -11,6 +11,7 @@ import com.surainvestments.roster.data.remote.WorkerApiService
 import com.surainvestments.roster.domain.model.AppUser
 import com.surainvestments.roster.domain.model.AuthError
 import com.surainvestments.roster.domain.model.UserStatus
+import com.surainvestments.roster.domain.model.UserRole
 import com.surainvestments.roster.domain.model.friendlyMessage
 import java.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -91,6 +92,10 @@ class AuthRepository @Inject constructor(
         if (user.status == UserStatus.Inactive) {
             firebaseAuth.signOut()
             throw AuthError.AccountInactive
+        }
+        if (user.role != UserRole.Staff) {
+            firebaseAuth.signOut()
+            throw AuthError.StaffOnly
         }
 
         // Best-effort, deliberately launched on the app-wide scope rather
